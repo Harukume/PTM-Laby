@@ -1,142 +1,134 @@
-; Adresy LCD (zestaw ZD537)
-LCDstatus   equ 0FF2EH 
-LCDcontrol  equ 0FF2CH 
-LCDdataWR   equ 0FF2DH 
-P3          EQU 0B0h
-
-; Instrukcje sterujące
-#define CLEAR    0x01
-#define INITDISP 0x38
-#define LCDON    0x0e
-
-; --- MAKRA ---
-LCDcntrlWR MACRO x 
-    LOCAL loop 
-loop:
-    MOV  DPTR,#LCDstatus 
-    MOVX A,@DPTR 
-    JB   ACC.7,loop 
-    MOV  DPTR,#LCDcontrol 
-    MOV  A, x 
-    MOVX @DPTR,A
+ljmp start
+LCDstatus equ 0FF2EH ; adres do odczytu gotowosci LCD
+LCDcontrol equ 0FF2CH ; adres do podania bajtu sterujacego LCD
+LCDdataWR equ 0FF2DH ; adres do podania kodu ASCII na LCD
+// bajty sterujace LCD, inne dostepne w opisie LCD na stronie WWW
+#define HOME 0x80 // put cursor to second line
+#define INITDISP 0x38 // LCD init (8-bit mode)
+#define HOM2 0xc0 // put cursor to second line
+#define LCDON 0x0e // LCD nn, cursor off, blinking off
+#define CLEAR 0x01 // LCD display clear
+org 0100H
+// deklaracje tekstów
+text1: db "dwa",00
+text2: db "jeden",00
+text3: db "trzy",00
+text4: db "siedem",00
+// macro do wprowadzenia bajtu sterujacego na LCD
+LCDcntrlWR MACRO x ; x – parametr wywolania macra – bajt sterujacy
+LOCAL loop ; LOCAL oznacza ze etykieta loop moze sie powtórzyc w
+programie
+loop: MOV DPTR,#LCDstatus ; DPTR zaladowany adresem statusu
+MOVX A,@DPTR ; pobranie bajtu z biezacym statusem LCD
+JB ACC.7,loop ; testowanie najstarszego bitu akumulatora
+; – wskazuje gotowosc LCD
+MOV DPTR,#LCDcontrol ; DPTR zaladowany adresem do podania bajtu sterujacego
+MOV A, x ; do akumulatora trafia argument wywolania macra–bajt
+sterujacy
+MOVX @DPTR,A ; bajt sterujacy podany do LCD – zadana akcja widoczna na LCD
 ENDM
-
+// macro do wypisania znaku ASCII na LCD, znak ASCII przed wywolaniem macra ma byc w A
 LCDcharWR MACRO
-    LOCAL loop1
-    PUSH ACC 
-loop1: 
-    MOV  DPTR,#LCDstatus
-    MOVX A,@DPTR
-    JB   ACC.7,loop1 
-    POP  ACC 
-    MOV  DPTR,#LCDdataWR 
-    MOVX @DPTR,A
+LOCAL tutu ; LOCAL oznacza ze etykieta tutu moze sie powtórzyc w
+programie
+PUSH ACC ; odlozenie biezacej zawartosci akumulatora na stos
+tutu: MOV DPTR,#LCDstatus ; DPTR zaladowany adresem statusu
+MOVX A,@DPTR ; pobranie bajtu z biezacym statusem LCD
+JB ACC.7,tutu ; testowanie najstarszego bitu akumulatora
+; – wskazuje gotowosc LCD
+MOV DPTR,#LCDdataWR ; DPTR zaladowany adresem do podania bajtu sterujacego
+POP ACC ; w akumulatorze ponownie kod ASCII znaku na LCD
+MOVX @DPTR,A ; kod ASCII podany do LCD – znak widoczny na LCD
 ENDM
-
+// macro do inicjalizacji wyswietlacza – bez parametrów
 init_LCD MACRO
-    LCDcntrlWR #INITDISP
-    LCDcntrlWR #CLEAR
-    LCDcntrlWR #LCDON
+LCDcntrlWR #INITDISP ; wywolanie macra LCDcntrlWR – inicjalizacja LCD
+LCDcntrlWR #CLEAR ; wywolanie macra LCDcntrlWR – czyszczenie LCD
+LCDcntrlWR #LCDON ; wywolanie macra LCDcntrlWR – konfiguracja kursora
 ENDM
+// funkcja opóznienia
+delay: mov r0, #15H
+one: mov r1, #0FFH
+dwa: mov r2, #0FFH
+trzy: djnz r2, trzy
 
-; --- PROGRAM GŁÓWNY ---
-ORG 8000h
-start:
-    mov sp, #30h
-    init_LCD
 
-main_loop:
-    mov a, P3           
-    cpl a               ; Odwróć (1 = wciśnięty)
-    anl a, #00111100b   ; MASKA: bity 5, 4, 3, 2
-    
-    mov r2, a           ; Zapamiętaj stan w R2
-    
-    ; Sprawdzenie wyjścia (oba skrajne: bit 2 i bit 5 -> 00100100b)
-    anl a, #00100100b   
-    cjne a, #00100100b, check_buttons 
-    
-    ; Wyjście (Guzik 2 i 5 wciśnięty)
-    LCDcntrlWR #CLEAR
-    mov dptr, #msg_exit
-    acall print_string
-    sjmp finish
+djnz r1, dwa
+djnz r0, one
+ret
+// funkcja wypisania znaku
+putcharLCD: LCDcharWR
+ret
+//funkcja wypisania lancucha znaków
+putstrLCD: clr a
+movc a, @a+dptr
+jz koniec
+push dph
+push dpl
+acall putcharLCD
+pop dpl
+pop dph
+inc dptr
+sjmp putstrLCD
+koniec: ret
+przycisk1: LCDcntrlWR #CLEAR
+LCDcntrlWR #HOME
+mov dptr, #text1
+acall putstrLCD
+acall delay
+ljmp begin
+przycisk2: LCDcntrlWR #CLEAR
+LCDcntrlWR #HOME
+mov dptr, #text2
+acall putstrLCD
+acall delay
+ljmp begin
+przycisk3: LCDcntrlWR #CLEAR
+LCDcntrlWR #HOME
+mov dptr, #text3
+acall putstrLCD
+ljmp begin
+przycisk4: LCDcntrlWR #CLEAR
+LCDcntrlWR #HOME
+mov dptr, #text4
+acall putstrLCD
+acall delay
+ljmp begin
+// program glówny
+start: init_LCD
+begin: clr c
+mov a, p3
+subb a, #0cfh ; 1100 1111 - koniec
+jz finito
+mov a, p3
+subb a, #0dfh ; 1101 1111
+jnz omin1
+skok1:
+ljmp przycisk1
+omin1:
+mov a, p3
+subb a, #0efh ; 1110 1111
+jnz omin2
+skok2:
+ljmp przycisk2
+omin2:
+mov a, p3
+subb a, #0f7h ; 1111 0111
+jnz omin3
+skok3:
+ljmp przycisk3
+omin3:
+mov a, p3
+subb a, #0fbh ; 1111 1011
+jnz omin4
+skok4:
 
-check_buttons:
-    mov a, r2           ; Przywróć stan guzików
-    jz main_loop        
-
-    ; Wybór przycisku
-    jb acc.2, btn1      
-    jb acc.3, btn2      
-    jb acc.4, btn3      
-    jb acc.5, btn4      
-    sjmp main_loop
-
-btn1:
-    mov dptr, #txt1
-    sjmp display
-btn2:
-    mov dptr, #txt2
-    sjmp display
-btn3:
-    mov dptr, #txt3
-    sjmp display
-btn4:
-    mov dptr, #txt4
-    sjmp display
-
-display:
-    ; MUSIMY ratować DPTR przed makrem CLEAR
-    push dph
-    push dpl
-    LCDcntrlWR #CLEAR   
-    pop  dpl
-    pop  dph
-
-    acall print_string
-    acall delay         
-    sjmp main_loop
-
-finish:
-    sjmp $
-
-; --- PODPROGRAMY ---
-
-print_string:
-    push acc
-ps_loop:
-    clr  a
-    movc a, @a+dptr     
-    jz   ps_end         
-    
-    push dph            ; Ochrona DPTR przed makrem LCDcharWR
-    push dpl
-    LCDcharWR           
-    pop  dpl
-    pop  dph
-    
-    inc  dptr
-    sjmp ps_loop
-ps_end:
-    pop  acc
-    ret
-
-delay:
-    mov r5, #5
-del_outer:
-    mov r6, #100
-d1: mov r7, #250
-d2: djnz r7, d2
-    djnz r6, d1
-    djnz r5, del_outer
-    ret
-
-; --- DANE ---
-txt1: db "Przycisk 1 (P3.2)", 0
-txt2: db "Opcja 2 (P3.3)", 0
-txt3: db "Wybrano 3 (P3.4)", 0
-txt4: db "Koniec (P3.5)", 0
-msg_exit: db "KONIEC PROGRAMU", 0
-
-END
+ljmp przycisk4
+omin4:
+sjmp begin
+finito: LCDcntrlWR #CLEAR
+nop
+nop
+nop
+jmp $
+end start
