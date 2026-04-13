@@ -1,99 +1,133 @@
-ljmp _start
-LCDstatus equ 0 FF2EH ; adres do odczytu gotowosci LCD
-LCDcontrol equ 0 FF2CH ; adres do podania bajtu sterujacego LCD
-LCDdataWR equ 0 FF2DH ; adres do podania kodu ASCII na LCD
-; bajty sterujace LCD , inne dostepne w opisie LCD na stronie WWW
-# define HOME 0 x80 ; put cursor to first line
-# define INITDISP 0 x38 ; LCD init (8 - bit mode )
-# define HOM2 0 xc0 ; put cursor to second line
-# define LCDON 0 x0e ; LCD nn , cursor off , blinking off
-# define CLEAR 0 x01 ; LCD display clear
-org 0100 H
-; deklaracje tekstow
-text : db "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas at
-libero nec turpis pulvinar tincidunt et id quam. Sed at nibh nisi. Proin et
-neque ac mi dignissim tincidunt sed lobortis diam." ,00
-; macro do wprowadzenia bajtu sterujacego na LCD
-LCDcntrlWR MACRO x ; x - parametr wywolania macra - bajt sterujacy
-LOCAL loop ; LOCAL oznacza ze etykieta loop moze sie powtorzyc w programie
-loop : MOV DPTR ,# LCDstatus ; DPTR zaladowany adresem statusu
-MOVX A , @DPTR ; pobranie bajtu z biezacym statusem LCD
-JB ACC.7 , loop ; testowanie najstarszego bitu akumulatora
-; - wskazuje gotowosc LCD
-MOV DPTR ,# LCDcontrol ; DPTR zaladowany adresem do podania bajtu sterujacego
-MOV A , x ; do akumulatora trafia argument wywolania macra - bajt sterujacy
-MOVX @DPTR ,A ; bajt sterujacy podany do LCD - zadana akcja widoczna na LCD
-ENDM
-; macro do wypisania znaku ASCII na LCD , znak ASCII przed wywolaniem macra ma
-byc w A
-LCDcharWR MACRO
-LOCAL tutu ; LOCAL oznacza ze etykieta tutu moze sie powtorzyc wprogramie
-PUSH ACC ; odlozenie biezacej zawartosci akumulatora na stos
-tutu : MOV DPTR ,# LCDstatus ; DPTR zaladowany adresem statusu
-MOVX A , @DPTR ; pobranie bajtu z biezacym statusem LCD
-JB ACC.7 , tutu ; testowanie najstarszego bitu akumulatora
-; - wskazuje gotowosc LCD
-MOV DPTR ,# LCDdataWR ; DPTR zaladowany adresem do podania bajtu sterujacego
-POP ACC ; w akumulatorze ponownie kod ASCII znaku na LCD
-MOVX @DPTR ,A ; kod ASCII podany do LCD - znak widoczny na LCD
-ENDM
-; macro do inicjalizacji wyswietlacza - bez parametrow
-init_LCD MACRO
-LCDcntrlWR # INITDISP ; wywolanie macra LCDcntrlWR - inicjalizacja LCD
-LCDcntrlWR # CLEAR ; wywolanie macra LCDcntrlWR - czyszczenie LCD
-LCDcntrlWR # LCDON ; wywolanie macra LCDcntrlWR - konfiguracja kursora
-ENDM
-; funkcja opoznienia
-_delay : mov r0 , #15 H
-one : mov r1 , #0 FFH
-two : mov r2 , #0 FFH
-three : djnz r2 , three
-djnz r1 , two
-djnz r0 , one
+; --- ADRESY LCD (Zestaw ZD537) ---
+LCDstatus   equ 0FF2EH
+LCDcontrol  equ 0FF2CH
+LCDdataWR   equ 0FF2DH
 
-ret
-; funkcja wypisania znaku
-_putcharLCD : LCDcharWR
-ret
-; funkcja wypisania lancucha 16 znakow
-_put16charLCD :
-mov r7 , #10 h ; licznik znakow do wyswietlenia
-_next : clr a
-movc a , @a + dptr
-jz _finish ; sprawdzenie czy kolejnym znakiem nie jest 0
-push dph
-push dpl
-acall _putcharLCD ; wyswietlenie kolejnego znaku
-pop dpl
-pop dph
-inc dptr
-dec r7
-mov a , r7
-jz _finish ; sprawdzenie czy licznik znak jest wiekszy od 0
-sjmp _next
-_finish: ret
-; program glowny
-_start: init_LCD
-mov dptr , #text ; wprowadzenie adresu tekstu do DPTR
-_main_loop :
-LCDcntrlWR #CLEAR ; wyzerowanie wyświetlacza
-LCDcntrlWR #HOME ; ustawienie kursora na 1 linie
-acall _put16charLCD ; wyswietlenie 16 znakow
-clr a
-movc a , @a + dptr ; porównanie wskazywanego znaku do 0, jeśli tak, zakańczamy
-program
-jz _end
-LCDcntrlWR # HOM2 ; ustawienie kursora na 2 linie
-acall _put16charLCD ; wyswietlenie 16 znakow
-clr a
-movc a , @a + dptr ; porównanie wskazywanego znaku do 0, jeśli tak, zakańczamy
-program
-jz _end
-acall _delay ; wywołanie opóźnienia
-sjmp _main_loop ; powtarzamy główną część programu w pętli
-_end:
-nop
-nop
-nop
-jmp $
-end start
+; --- KOMENDY STERUJĄCE ---
+#define CLEAR    0x01
+#define INITDISP 0x38
+#define LCDON    0x0e
+#define LINE1    0x80 ; Adres początku 1. linii
+#define LINE2    0xc0 ; Adres początku 2. linii
+
+; --- MAKRA ---
+LCDcntrlWR MACRO x
+    LOCAL loop
+loop:
+    MOV  DPTR,#LCDstatus
+    MOVX A,@DPTR
+    JB   ACC.7,loop
+    MOV  DPTR,#LCDcontrol
+    MOV  A, x
+    MOVX @DPTR,A
+ENDM
+
+LCDcharWR MACRO
+    LOCAL loop1
+    PUSH ACC
+loop1: 
+    MOV  DPTR,#LCDstatus
+    MOVX A,@DPTR
+    JB   ACC.7,loop1
+    POP  ACC
+    MOV  DPTR,#LCDdataWR
+    MOVX @DPTR,A
+ENDM
+
+init_LCD MACRO
+    LCDcntrlWR #INITDISP
+    LCDcntrlWR #CLEAR
+    LCDcntrlWR #LCDON
+ENDM
+
+; --- PROGRAM GŁÓWNY ---
+ORG 8000h           ; Zmień na 0100h jeśli Twój system tego wymaga
+start:
+    mov sp, #30h
+    init_LCD
+    mov dptr, #long_text ; Ustaw wskaźnik na początek bardzo długiego tekstu
+
+next_page:
+    ; 1. Czyścimy ekran przed nową porcją tekstu (32 znaki)
+    push dph
+    push dpl
+    LCDcntrlWR #CLEAR   
+    pop  dpl
+    pop  dph
+    
+    ; --- LINIA 1 (16 znaków) ---
+    push dph
+    push dpl
+    LCDcntrlWR #LINE1
+    pop  dpl
+    pop  dph
+
+    mov r2, #16         ; Licznik dla pierwszej linii
+line1_loop:
+    clr  a
+    movc a, @a+dptr
+    jz   end_of_text    ; Jeśli napotkasz 0, zakończ program
+    
+    push dph            ; Ratuj DPTR przed makrem LCD
+    push dpl
+    LCDcharWR
+    pop  dpl
+    pop  dph
+    
+    inc  dptr           ; Przejdź do następnego znaku w pamięci
+    djnz r2, line1_loop ; Powtarzaj aż zapełnisz 16 znaków
+
+    ; --- LINIA 2 (16 znaków) ---
+    push dph
+    push dpl
+    LCDcntrlWR #LINE2
+    pop  dpl
+    pop  dph
+
+    mov r2, #16         ; Licznik dla drugiej linii
+line2_loop:
+    clr  a
+    movc a, @a+dptr
+    jz   end_of_text    
+    
+    push dph            ; Ratuj DPTR
+    push dpl
+    LCDcharWR
+    pop  dpl
+    pop  dph
+    
+    inc  dptr
+    djnz r2, line2_loop ; Powtarzaj aż zapełnisz kolejne 16 znaków
+
+    ; --- PAUZA (Po wyświetleniu pełnego ekranu 32 znaków) ---
+    acall long_delay
+    sjmp next_page      ; Skocz po następną porcję tekstu
+
+end_of_text:
+    acall long_delay    ; Pozwól przeczytać ostatnią stronę
+    LCDcntrlWR #CLEAR
+    sjmp $              ; Koniec - pętla w miejscu
+
+; --- PODPROGRAMY OPÓŹNIAJĄCE ---
+long_delay:             ; Ok. 1.5 - 2 sekundy pauzy
+    mov r5, #20
+ld_loop:
+    acall delay
+    djnz r5, ld_loop
+    ret
+
+delay:                  ; Standardowa krótka pętla opóźniająca
+    mov r6, #200
+d1: mov r7, #250
+d2: djnz r7, d2
+    djnz r6, d1
+    ret
+
+; --- DANE (Łańcuch znaków) ---
+long_text: 
+    db "To jest bardzo dlugi tekst testowy, ktory musi zostac podzielony "
+    db "na strony po trzydziesci dwa znaki kazda. Kazda strona ma dwie "
+    db "linie po szesnascie znakow, a miedzy stronami jest pauza. "
+    db "Asembler 8051 radzi sobie z tym wysmienicie!", 0
+
+END
