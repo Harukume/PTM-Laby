@@ -1,37 +1,53 @@
-; Adresy LCD (zestaw ZD537)
-LCDstatus   equ 0FF2EH
-LCDcontrol  equ 0FF2CH
-LCDdataWR   equ 0FF2DH
+; --- ADRESY LCD ---
+LCDstatus   equ 0FF2EH 
+LCDcontrol  equ 0FF2CH 
+LCDdataWR   equ 0FF2DH 
+P3          EQU 0B0h
 
-; Komendy sterujące
+; --- KOMENDY STERUJĄCE ---
 #define CLEAR    0x01
 #define INITDISP 0x38
 #define LCDON    0x0e
-#define LINE1    0x80 
-#define LINE2    0xc0 
+#define HOME     0x80 ; Linia 1
+#define HOM2     0xc0 ; Linia 2
 
-; --- MAKRA ---
-LCDcntrlWR MACRO x
-    LOCAL loop
+; --- MAKRA (Z ZABEZPIECZENIEM DPTR) ---
+
+LCDcntrlWR MACRO x 
+    LOCAL loop 
 loop:
-    MOV  DPTR,#LCDstatus
-    MOVX A,@DPTR
-    JB   ACC.7,loop
-    MOV  DPTR,#LCDcontrol
-    MOV  A, x
+    PUSH DPTR           ; Ratuj DPTR przed zmianą adresu sterownika
+    MOV  DPTR,#LCDstatus 
+    MOVX A,@DPTR 
+    JB   ACC.7,skip_push ; Jeśli zajęty, musimy skoczyć do POP i spróbować znów
+    MOV  DPTR,#LCDcontrol 
+    MOV  A, x 
     MOVX @DPTR,A
+    POP  DPTR
+    SJMP exit_macro
+skip_push:
+    POP  DPTR
+    SJMP loop
+exit_macro:
 ENDM
 
 LCDcharWR MACRO
     LOCAL loop1
-    PUSH ACC
+    PUSH ACC 
 loop1: 
+    PUSH DPTR
     MOV  DPTR,#LCDstatus
     MOVX A,@DPTR
-    JB   ACC.7,loop1
-    POP  ACC
-    MOV  DPTR,#LCDdataWR
+    JB   ACC.7,skip_ch
+    MOV  DPTR,#LCDdataWR 
+    POP  DPTR
+    POP  ACC 
     MOVX @DPTR,A
+    SJMP exit_ch
+skip_ch:
+    POP  DPTR
+    SJMP loop1
+exit_ch:
 ENDM
 
 init_LCD MACRO
@@ -41,92 +57,124 @@ init_LCD MACRO
 ENDM
 
 ; --- PROGRAM GŁÓWNY ---
-ORG 8000h
+ORG 0100h               ; Ustawione na 0100h jak w Twoim działającym pliku
 start:
     mov sp, #30h
     init_LCD
-    mov dptr, #long_text 
 
-next_block:
-    ; Czyścimy ekran przed każdą nową "stroną" (32 znaki)
-    push dph
-    push dpl
-    LCDcntrlWR #CLEAR   
-    pop  dpl
-    pop  dph
+main_loop:
+    mov a, P3           
+    cpl a               
+    anl a, #00111100b   ; Guziki na bitach 5,4,3,2
     
-    ; --- LINIA 1 ---
-    push dph
-    push dpl
-    LCDcntrlWR #LINE1
-    pop  dpl
-    pop  dph
-
-    mov r2, #16         
-line1_loop:
-    clr  a
-    movc a, @a+dptr
-    jz   end_of_text    
+    mov r2, a           
     
-    push dph            ; Ratuj DPTR przed makrem znaku
-    push dpl
-    LCDcharWR
-    pop  dpl
-    pop  dph
+    ; Sprawdzenie wyjścia (Bit 2 i 5)
+    anl a, #00100100b   
+    cjne a, #00100100b, check_buttons 
     
-    inc  dptr
-    djnz r2, line1_loop 
-
-    ; --- LINIA 2 ---
-    push dph            ; Ratuj DPTR przed makrem zmiany linii!
-    push dpl
-    LCDcntrlWR #LINE2
-    pop  dpl
-    pop  dph
-
-    mov r2, #16         
-line2_loop:
-    clr  a
-    movc a, @a+dptr
-    jz   end_of_text    
-    
-    push dph            ; Ratuj DPTR
-    push dpl
-    LCDcharWR
-    pop  dpl
-    pop  dph
-    
-    inc  dptr
-    djnz r2, line2_loop 
-
-    ; --- PAUZA ---
-    acall long_delay
-    sjmp next_block     
-
-end_of_text:
-    acall long_delay
     LCDcntrlWR #CLEAR
-    sjmp $              
+    mov dptr, #msg_exit
+    acall putstrLCD
+    sjmp finish
 
-; --- DELAY ---
-long_delay:             
-    mov r5, #15
-ld_loop:
-    acall delay
-    djnz r5, ld_loop
+check_buttons:
+    mov a, r2           
+    jz main_loop        
+
+    jb acc.2, btn1      
+    jb acc.3, btn2      
+    jb acc.4, btn3      
+    jb acc.5, btn4      
+    sjmp main_loop
+
+btn1:
+    mov dptr, #txt1_up
+    mov r3, #1          ; Znacznik dla display (opcja 1)
+    sjmp display
+btn2:
+    mov dptr, #txt2_up
+    mov r3, #2
+    sjmp display
+btn3:
+    mov dptr, #txt3_up
+    mov r3, #3
+    sjmp display
+btn4:
+    mov dptr, #txt4_up
+    mov r3, #4
+    sjmp display
+
+display:
+    LCDcntrlWR #CLEAR   
+    LCDcntrlWR #HOME    ; Ustaw kursor na początku 1. linii
+    acall putstrLCD     ; Wypisz górny tekst (dptr ustawiony w btnX)
+    
+    LCDcntrlWR #HOM2    ; PRZESKOK DO 2. LINII
+    
+    ; Wybór dolnego tekstu zależnie od R3
+    cjne r3, #1, d2
+    mov dptr, #txt1_down
+    sjmp print_down
+d2: cjne r3, #2, d3
+    mov dptr, #txt2_down
+    sjmp print_down
+d3: cjne r3, #3, d4
+    mov dptr, #txt3_down
+    sjmp print_down
+d4: mov dptr, #txt4_down
+
+print_down:
+    acall putstrLCD
+    acall delay         
+    sjmp main_loop
+
+finish:
+    sjmp $
+
+; --- PODPROGRAMY ---
+
+putstrLCD:
+    clr  a
+    movc a, @a+dptr     
+    jz   put_end         
+    push dph            
+    push dpl
+    acall putcharLCD           
+    pop  dpl
+    pop  dph
+    inc  dptr
+    sjmp putstrLCD
+put_end:
     ret
 
-delay:            
+putcharLCD:
+    LCDcharWR
+    ret
+
+delay:
+    mov r5, #10
+del_outer:
     mov r6, #200
 d1: mov r7, #250
 d2: djnz r7, d2
     djnz r6, d1
+    djnz r5, del_outer
     ret
 
-; --- DANE ---
-long_text: 
-    db "To jest bardzo dlugi tekst, ktory nie zmiesci sie w jednej linii, "
-    db "dlatego musimy go podzielic na bloki po szesnascie znakow. "
-    db "Program automatycznie przelacza linie i czysci ekran.", 0
+; --- DANE (Podział na linie) ---
+txt1_up:   db "PRZYCISK 1", 0
+txt1_down: db "LINIA DOLNA 1", 0
+
+txt2_up:   db "OPCJA NR 2", 0
+txt2_down: db "LINIA DOLNA 2", 0
+
+txt3_up:   db "WYBRANO TRZY", 0
+txt3_down: db "LINIA DOLNA 3", 0
+
+txt4_up:   db "KONIEC LISTY", 0
+txt4_down: db "LINIA DOLNA 4", 0
+
+msg_exit:  db "KONIEC PROGRAMU", 0
 
 END
