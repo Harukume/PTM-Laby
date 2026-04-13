@@ -1,0 +1,110 @@
+; Adresy LCD (zestaw ZD537)
+LCDstatus   equ 0FF2EH
+LCDcontrol  equ 0FF2CH
+LCDdataWR   equ 0FF2DH
+
+; Komendy sterujące
+#define CLEAR    0x01
+#define INITDISP 0x38
+#define LCDON    0x0e
+#define LINE1    0x80 ; Adres początku 1. linii
+#define LINE2    0xc0 ; Adres początku 2. linii
+
+; --- MAKRA  ---
+LCDcntrlWR MACRO x
+ LOCAL loop
+loop:
+    MOV DPTR,#LCDstatus
+    MOVX A,@DPTR
+    JB ACC.7,loop
+    MOV DPTR,#LCDcontrol
+    MOV A, x
+    MOVX @DPTR,A
+ENDM
+
+LCDcharWR MACRO
+ LOCAL loop1
+    PUSH ACC
+loop1: 
+    MOV DPTR,#LCDstatus
+    MOVX A,@DPTR
+    JB ACC.7,loop1
+    POP ACC
+    MOV DPTR,#LCDdataWR
+    MOVX @DPTR,A
+ENDM
+
+init_LCD MACRO
+    LCDcntrlWR #INITDISP
+    LCDcntrlWR #CLEAR
+    LCDcntrlWR #LCDON
+ENDM
+
+; --- PROGRAM GŁÓWNY ---
+ORG 8000h
+start:
+    mov sp, #30h
+    init_LCD
+    mov dptr, #long_text ; Ustaw dptr na początek tekstu
+
+next_block:
+    LCDcntrlWR #CLEAR   ; Każdy blok 32-znakowy zaczynamy od czystego ekranu
+    
+    ; --- LINIJA 1 (16 znaków) ---
+    LCDcntrlWR #LINE1
+    mov r2, #16         ; Licznik znaków dla pierwszej linii
+line1_loop:
+    clr a
+    movc a, @a+dptr
+    jz end_of_text      ; Jeśli napotkasz 0, zakończ program
+    LCDcharWR
+    inc dptr
+    djnz r2, line1_loop ; Powtarzaj 16 razy
+
+    ; --- LINIJA 2 (16 znaków) ---
+    LCDcntrlWR #LINE2
+    mov r2, #16         ; Licznik znaków dla drugiej linii
+line2_loop:
+    clr a
+    movc a, @a+dptr
+    jz end_of_text      ; Jeśli napotkasz 0 przed końcem 16 znaków
+    LCDcharWR
+    inc dptr
+    djnz r2, line2_loop ; Powtarzaj 16 razy
+
+    ; --- PAUZA PO WYŚWIETLENIU 32 ZNAKÓW ---
+    acall long_delay
+    sjmp next_block     ; Przejdź do wyświetlania kolejnych 32 znaków
+
+end_of_text:
+    ; Opcjonalnie: poczekaj chwilę na ostatni blok tekstu przed końcem
+    acall long_delay
+    LCDcntrlWR #CLEAR
+    nop 
+    nop
+    nop
+    sjmp $              ; Koniec programu 
+
+; --- PODPROGRAMY OPÓŹNIAJĄCE ---
+long_delay:             ; Ok. 1-2 sekundy pauzy
+    mov r5, #15
+ld_loop:
+    acall delay
+    djnz r5, ld_loop
+    ret
+
+delay:            ; Standardowy delay 
+    mov r6, #200
+d1: mov r7, #250
+d2: djnz r7, d2
+    djnz r6, d1
+    ret
+
+; --- DANE (Łańcuch znaków > 16 znaków) ---
+; Tekst musi być zakończony zerem (0)
+long_text: 
+    db "To jest bardzo dlugi tekst, ktory nie zmiesci sie w jednej linii, "
+    db "dlatego musimy go podzielic na bloki po szesnascie znakow. "
+    db "Program automatycznie przelacza linie i czysci ekran.", 0
+
+END
