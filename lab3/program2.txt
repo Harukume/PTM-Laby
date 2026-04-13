@@ -7,8 +7,8 @@ LCDdataWR   equ 0FF2DH
 #define CLEAR    0x01
 #define INITDISP 0x38
 #define LCDON    0x0e
-#define LINE1    0x80 ; Adres początku 1. linii
-#define LINE2    0xc0 ; Adres początku 2. linii
+#define LINE1    0x80 
+#define LINE2    0xc0 
 
 ; --- MAKRA ---
 LCDcntrlWR MACRO x
@@ -41,61 +41,74 @@ init_LCD MACRO
 ENDM
 
 ; --- PROGRAM GŁÓWNY ---
-ORG 8000h           ; Sprawdź czy Monitor-51 nie wymaga 0100h
+ORG 8000h
 start:
     mov sp, #30h
     init_LCD
-    mov dptr, #long_text ; Ustaw dptr na początek tekstu
+    mov dptr, #long_text 
 
 next_block:
+    ; Czyścimy ekran przed każdą nową "stroną" (32 znaki)
+    push dph
+    push dpl
     LCDcntrlWR #CLEAR   
+    pop  dpl
+    pop  dph
     
-    ; --- LINIA 1 (16 znaków) ---
+    ; --- LINIA 1 ---
+    push dph
+    push dpl
     LCDcntrlWR #LINE1
-    mov r2, #16         ; Licznik znaków dla pierwszej linii
+    pop  dpl
+    pop  dph
+
+    mov r2, #16         
 line1_loop:
     clr  a
     movc a, @a+dptr
-    jz   end_of_text    ; Jeśli napotkasz 0, zakończ
+    jz   end_of_text    
     
-    ; RATOWANIE DPTR przed makrem LCD
-    push dph
+    push dph            ; Ratuj DPTR przed makrem znaku
     push dpl
     LCDcharWR
     pop  dpl
     pop  dph
     
     inc  dptr
-    djnz r2, line1_loop ; Powtarzaj 16 razy
+    djnz r2, line1_loop 
 
-    ; --- LINIA 2 (16 znaków) ---
+    ; --- LINIA 2 ---
+    push dph            ; Ratuj DPTR przed makrem zmiany linii!
+    push dpl
     LCDcntrlWR #LINE2
-    mov r2, #16         ; Licznik znaków dla drugiej linii
+    pop  dpl
+    pop  dph
+
+    mov r2, #16         
 line2_loop:
     clr  a
     movc a, @a+dptr
     jz   end_of_text    
     
-    ; RATOWANIE DPTR przed makrem LCD
-    push dph
+    push dph            ; Ratuj DPTR
     push dpl
     LCDcharWR
     pop  dpl
     pop  dph
     
     inc  dptr
-    djnz r2, line2_loop ; Powtarzaj 16 razy
+    djnz r2, line2_loop 
 
-    ; --- PAUZA PO WYŚWIETLENIU 32 ZNAKÓW ---
+    ; --- PAUZA ---
     acall long_delay
     sjmp next_block     
 
 end_of_text:
     acall long_delay
     LCDcntrlWR #CLEAR
-    sjmp $              ; Koniec programu
+    sjmp $              
 
-; --- PODPROGRAMY OPÓŹNIAJĄCE ---
+; --- DELAY ---
 long_delay:             
     mov r5, #15
 ld_loop:

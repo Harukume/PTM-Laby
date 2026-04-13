@@ -48,7 +48,7 @@ start:
 main_loop:
     mov a, P3           
     cpl a               ; Odwróć (1 = wciśnięty)
-    anl a, #00111100b   ; MASKA: zostaw tylko bity 5, 4, 3, 2
+    anl a, #00111100b   ; MASKA: bity 5, 4, 3, 2
     
     mov r2, a           ; Zapamiętaj stan w R2
     
@@ -66,11 +66,11 @@ check_buttons:
     mov a, r2           ; Przywróć stan guzików
     jz main_loop        
 
-    ; Wybór przycisku (zgodnie z Twoim nowym układem pinów)
-    jb acc.2, btn1      ; Pierwszy guzik jest na bicie 2
-    jb acc.3, btn2      ; Drugi na 3
-    jb acc.4, btn3      ; Trzeci na 4
-    jb acc.5, btn4      ; Czwarty na 5
+    ; Wybór przycisku
+    jb acc.2, btn1      
+    jb acc.3, btn2      
+    jb acc.4, btn3      
+    jb acc.5, btn4      
     sjmp main_loop
 
 btn1:
@@ -87,7 +87,13 @@ btn4:
     sjmp display
 
 display:
+    ; MUSIMY ratować DPTR przed makrem CLEAR
+    push dph
+    push dpl
     LCDcntrlWR #CLEAR   
+    pop  dpl
+    pop  dph
+
     acall print_string
     acall delay         
     sjmp main_loop
@@ -104,7 +110,7 @@ ps_loop:
     movc a, @a+dptr     
     jz   ps_end         
     
-    push dph            ; Ochrona DPTR przed makrem
+    push dph            ; Ochrona DPTR przed makrem LCDcharWR
     push dpl
     LCDcharWR           
     pop  dpl
