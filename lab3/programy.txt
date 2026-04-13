@@ -1,0 +1,135 @@
+; Adresy LCD (zestaw ZD537)
+LCDstatus   equ 0FF2EH ; adres do odczytu gotowości LCD
+LCDcontrol  equ 0FF2CH ; adres do podania bajtu sterującego LCD
+LCDdataWR   equ 0FF2DH ; adres do podania kodu ASCII na LCD
+P3          EQU 0B0h
+
+; Instrukcje sterujące
+#define CLEAR    0x01 // LCD display clear
+#define INITDISP 0x38 // LCD init (8-bit mode)
+#define LCDON    0x0e // LCD nn, cursor off, blinking off
+#define HOME     0x80 // put cursor to second lin
+
+; --- MAKRA ---
+; Makro do oczekiwania na wolny LCD, wpisze wartość x na adres sterujący LCD, np. clear
+LCDcntrlWR MACRO x ; x – parametr wywołania macra – bajt sterujący
+ LOCAL loop ; LOCAL oznacza że etykieta loop może się powtórzyć w programie
+loop:
+    MOV DPTR,#LCDstatus ; DPTR załadowany adresem statusu
+    MOVX A,@DPTR ; pobranie bajtu z bieżącym statusem LCD
+    JB ACC.7,loop ; sprawdza gotowość LCD (Jump if Bit set - czy ma wartośc 1, jka tak to skacze)
+    MOV DPTR,#LCDcontrol
+    MOV A, x ; do akumulatora trafia argument wywołania macra–bajt sterujący
+    MOVX @DPTR,A
+ENDM
+
+; Makro do wypisywania znaków na LCD
+LCDcharWR MACRO
+ LOCAL loop1
+    PUSH ACC ; odłożenie zawartości A na stos. 
+loop1: 
+    MOV DPTR,#LCDstatus
+    MOVX A,@DPTR
+    JB ACC.7,loop1 ; ACC = A. sprawdza najstarszy bit
+    POP ACC ; wyjmuje ze stosu i oddaje do akumulatora
+    MOV DPTR,#LCDdataWR ; adres do kodu asci
+    MOVX @DPTR,A
+ENDM
+
+; Makro do uruchomienia LCD - 8 bit, wyczyszczony, bez mrugania
+init_LCD MACRO
+    LCDcntrlWR #INITDISP
+    LCDcntrlWR #CLEAR
+    LCDcntrlWR #LCDON
+ENDM
+
+; --- PROGRAM GŁÓWNY ---
+ORG 8000h
+start:
+    mov sp, #30h
+    init_LCD
+
+main_loop:
+    mov a, P3           ; Odczytaj (np. 11110110b - naciśnięty guzik 0 i 3)
+    cpl a               ; ODWRÓĆ! Teraz naciśnięte guziki to JEDYNKI (00001001b)
+    anl a, #00001111b   ; Zostaw tylko 4 dolne guziki
+    
+    mov r2, a           ; Kopia dla późniejszego sprawdzania
+    
+    ; Sprawdzenie wyjścia (czy naciśnięto oba skrajne)
+    anl a, #00001001b   ; Wyizoluj bity 0 i 3
+    ;Compare and Jump if Not Equal
+    cjne a, #00001001b, check_buttons ; Jeśli wynik to 1001, znaczy że oba wciśnięte!
+    ; Wyjście z programu
+    LCDcntrlWR #CLEAR
+    mov dptr, #msg_exit
+    acall print_string
+    sjmp finish
+
+check_buttons:
+    mov a, r2           ; Przywróć stan guzików
+    jz main_loop        ; Jeśli nic nie naciśnięto, czekaj dalej
+
+    ; Wybór przycisku
+    jb acc.0, btn1
+    jb acc.1, btn2
+    jb acc.2, btn3
+    jb acc.3, btn4
+    sjmp main_loop
+
+btn1:
+    mov dptr, #txt1
+    sjmp display
+btn2:
+    mov dptr, #txt2
+    sjmp display
+btn3:
+    mov dptr, #txt3
+    sjmp display
+btn4:
+    mov dptr, #txt4
+    sjmp display
+
+display:
+    LCDcntrlWR #CLEAR   ; Wyczyść przed nowym tekstem
+    acall print_string
+    acall delay         ; Debouncing (drgania styków)
+    sjmp main_loop
+
+finish:
+    sjmp $
+    nop
+    nop
+    nop
+
+; --- PODPROGRAMY ---
+
+; Wyświetla ciąg znaków zakończony zerem (0)
+print_string:
+    push acc
+ps_loop:
+    clr a
+    movc a, @a+dptr     ; Pobierz znak z pamięci kodu
+    jz ps_end           ; Jeśli 0, koniec napisu
+    LCDcharWR           ; Wyświetl znak
+    inc dptr
+    sjmp ps_loop
+ps_end:
+    pop acc
+    ret
+
+delay:
+    mov r6, #100
+d1: mov r7, #250
+d2: djnz r7, d2 ; decrement and jump if not zero
+    djnz r6, d1
+    ret
+
+; --- DANE (Łańcuchy znaków) ---
+txt1: db "Przycisk 1", 0 ; db - define byte, 0 kończy tekst (Null terminator)
+txt2: db "Opcja Numer 2", 0
+txt3: db "Wybrano Trzy", 0
+txt4: db "Koniec Listy", 0
+msg_exit: db "KONIEC PROGRAMU", 0
+
+END
