@@ -1,36 +1,36 @@
-; --- ADRESY LCD (Zestaw ZD537) ---
+; Adresy LCD (zestaw ZD537)
 LCDstatus   equ 0FF2EH
 LCDcontrol  equ 0FF2CH
 LCDdataWR   equ 0FF2DH
 
-; --- KOMENDY STERUJĄCE ---
+; Komendy sterujące
 #define CLEAR    0x01
 #define INITDISP 0x38
 #define LCDON    0x0e
-#define LINE1    0x80 ; Adres początku 1. linii
-#define LINE2    0xc0 ; Adres początku 2. linii
+#define LINE1    0x80 
+#define LINE2    0xc0 
 
 ; --- MAKRA ---
 LCDcntrlWR MACRO x
-    LOCAL loop
+ LOCAL loop
 loop:
-    MOV  DPTR,#LCDstatus
+    MOV DPTR,#LCDstatus
     MOVX A,@DPTR
-    JB   ACC.7,loop
-    MOV  DPTR,#LCDcontrol
-    MOV  A, x
+    JB ACC.7,loop
+    MOV DPTR,#LCDcontrol
+    MOV A, x
     MOVX @DPTR,A
 ENDM
 
 LCDcharWR MACRO
-    LOCAL loop1
+ LOCAL loop1
     PUSH ACC
 loop1: 
-    MOV  DPTR,#LCDstatus
+    MOV DPTR,#LCDstatus
     MOVX A,@DPTR
-    JB   ACC.7,loop1
-    POP  ACC
-    MOV  DPTR,#LCDdataWR
+    JB ACC.7,loop1
+    POP ACC
+    MOV DPTR,#LCDdataWR
     MOVX @DPTR,A
 ENDM
 
@@ -41,93 +41,87 @@ init_LCD MACRO
 ENDM
 
 ; --- PROGRAM GŁÓWNY ---
-ORG 8000h           ; Zmień na 0100h jeśli Twój system tego wymaga
+ORG 8000h           ; 
 start:
     mov sp, #30h
     init_LCD
-    mov dptr, #long_text ; Ustaw wskaźnik na początek bardzo długiego tekstu
+    mov dptr, #long_text 
 
-next_page:
-    ; 1. Czyścimy ekran przed nową porcją tekstu (32 znaki)
+next_block:
     push dph
     push dpl
     LCDcntrlWR #CLEAR   
-    pop  dpl
-    pop  dph
     
-    ; --- LINIA 1 (16 znaków) ---
-    push dph
-    push dpl
+    ; --- LINIJA 1 (16 znaków) ---
     LCDcntrlWR #LINE1
-    pop  dpl
+    pop  dpl            
     pop  dph
 
-    mov r2, #16         ; Licznik dla pierwszej linii
+    mov r2, #16         
 line1_loop:
-    clr  a
+    clr a
     movc a, @a+dptr
-    jz   end_of_text    ; Jeśli napotkasz 0, zakończ program
+    jz end_of_text      
     
-    push dph            ; Ratuj DPTR przed makrem LCD
+    push dph            
     push dpl
     LCDcharWR
     pop  dpl
     pop  dph
     
-    inc  dptr           ; Przejdź do następnego znaku w pamięci
-    djnz r2, line1_loop ; Powtarzaj aż zapełnisz 16 znaków
+    inc dptr
+    djnz r2, line1_loop 
 
-    ; --- LINIA 2 (16 znaków) ---
-    push dph
+    ; --- LINIJA 2 (16 znaków) ---
+    push dph            
     push dpl
     LCDcntrlWR #LINE2
     pop  dpl
     pop  dph
 
-    mov r2, #16         ; Licznik dla drugiej linii
+    mov r2, #16         
 line2_loop:
-    clr  a
+    clr a
     movc a, @a+dptr
-    jz   end_of_text    
+    jz end_of_text      
     
-    push dph            ; Ratuj DPTR
+    push dph            
     push dpl
     LCDcharWR
     pop  dpl
     pop  dph
     
-    inc  dptr
-    djnz r2, line2_loop ; Powtarzaj aż zapełnisz kolejne 16 znaków
+    inc dptr
+    djnz r2, line2_loop 
 
-    ; --- PAUZA (Po wyświetleniu pełnego ekranu 32 znaków) ---
+    ; --- PAUZA PO WYŚWIETLENIU 32 ZNAKÓW ---
     acall long_delay
-    sjmp next_page      ; Skocz po następną porcję tekstu
+    sjmp next_block     
 
 end_of_text:
-    acall long_delay    ; Pozwól przeczytać ostatnią stronę
+    acall long_delay
     LCDcntrlWR #CLEAR
-    sjmp $              ; Koniec - pętla w miejscu
+    sjmp $              
 
 ; --- PODPROGRAMY OPÓŹNIAJĄCE ---
-long_delay:             ; Ok. 1.5 - 2 sekundy pauzy
-    mov r5, #20
+long_delay:             
+    mov r5, #15
 ld_loop:
     acall delay
     djnz r5, ld_loop
     ret
 
-delay:                  ; Standardowa krótka pętla opóźniająca
+delay:            
     mov r6, #200
 d1: mov r7, #250
 d2: djnz r7, d2
     djnz r6, d1
     ret
 
-; --- DANE (Łańcuch znaków) ---
+; --- DANE ---
 long_text: 
-    db "To jest bardzo dlugi tekst testowy, ktory musi zostac podzielony "
-    db "na strony po trzydziesci dwa znaki kazda. Kazda strona ma dwie "
-    db "linie po szesnascie znakow, a miedzy stronami jest pauza. "
-    db "Asembler 8051 radzi sobie z tym wysmienicie!", 0
+    db "To jest bardzo dlugi tekst, ktory nie zmiesci sie w jednej linii, "
+    db "dlatego musimy go podzielic na bloki po szesnascie znakow. "
+    db "Program automatycznie przelacza linie i czysci ekran.", 0
 
 END
