@@ -1,0 +1,99 @@
+; Adresy LCD dla zestawu ZD537
+LCDstatus  equ 0FF2EH
+LCDcontrol equ 0FF2CH
+LCDdataWR  equ 0FF2DH
+
+#define INITDISP 0x38
+#define CLEAR    0x01
+#define LCDON    0x0e
+
+ORG 0100H
+ljmp start
+
+; Makra identyczne jak w dokumentacji
+LCDcntrlWR MACRO x
+ LOCAL loop
+ loop: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,loop
+  MOV DPTR,#LCDcontrol
+  MOV A,x
+  MOVX @DPTR,A
+ENDM
+
+LCDcharWR MACRO
+ LOCAL tutu
+ PUSH ACC
+ tutu: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,tutu
+  MOV DPTR,#LCDdataWR
+  POP ACC
+  MOVX @DPTR,A
+ENDM
+
+init_LCD MACRO
+ LCDcntrlWR #INITDISP
+ LCDcntrlWR #CLEAR
+ LCDcntrlWR #LCDON
+ENDM
+
+ORG 0200H
+start:
+    init_LCD
+    mov R0, #0      ; R0 przechowuje aktualny tryb (0:male, 1:duze, 2:cyfry)
+
+main_loop:
+    acall scan_key
+    jz main_loop    ; jeśli brak klawisza, pętla
+    
+    ; Sprawdzenie klawiszy funkcyjnych
+    cjne A, #0Ah, check_hash ; Przycisk '*' (kod 0A) - małe litery
+    mov R0, #0
+    sjmp main_loop
+check_hash:
+    cjne A, #0Bh, check_D    ; Przycisk '#' (kod 0B) - duże litery
+    mov R0, #1
+    sjmp main_loop
+check_D:
+    cjne A, #0Dh, print_key  ; Przycisk 'D' (kod 0D) - cyfry
+    mov R0, #2
+    sjmp main_loop
+
+print_key:
+    ; Logika przypisania znaku na podstawie trybu R0
+    push acc
+    cjne R0, #0, mode_upper
+    pop acc
+    add A, #97      ; start od 'a'
+    sjmp do_print
+mode_upper:
+    cjne R0, #1, mode_digits
+    pop acc
+    add A, #65      ; start od 'A'
+    sjmp do_print
+mode_digits:
+    pop acc         ; tryb cyfr (oryginalne kody 0-9)
+    add A, #48
+
+do_print:
+    LCDcharWR
+    acall delay     ; debouncing
+    sjmp main_loop
+
+; Funkcja skanowania klawiatury (uproszczona dla ZD537)
+scan_key:
+    mov P0, #00H    ; aktywuj wiersze
+    mov A, P0
+    cpl A
+    anl A, #0FH     ; czytaj kolumny
+    ret
+
+delay:
+    mov r1, #0FFH
+d1: mov r2, #0FFH
+    djnz r2, $
+    djnz r1, d1
+    ret
+
+END

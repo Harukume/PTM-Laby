@@ -1,0 +1,84 @@
+; Adresy LCD [cite: 6, 8, 10]
+LCDstatus  equ 0FF2EH
+LCDcontrol equ 0FF2CH
+LCDdataWR  equ 0FF2DH
+
+#define HOME 0x80
+#define HOM2 0xc0
+#define CLEAR 0x01
+#define INITDISP 0x38
+#define LCDON    0x0e
+
+ORG 0100H
+ljmp start
+
+; Makra identyczne jak w dokumentacji
+LCDcntrlWR MACRO x
+ LOCAL loop
+ loop: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,loop
+  MOV DPTR,#LCDcontrol
+  MOV A,x
+  MOVX @DPTR,A
+ENDM
+
+LCDcharWR MACRO
+ LOCAL tutu
+ PUSH ACC
+ tutu: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,tutu
+  MOV DPTR,#LCDdataWR
+  POP ACC
+  MOVX @DPTR,A
+ENDM
+
+init_LCD MACRO
+ LCDcntrlWR #INITDISP
+ LCDcntrlWR #CLEAR
+ LCDcntrlWR #LCDON
+ENDM
+
+ORG 0200H
+
+start:
+    init_LCD
+    mov R3, #0      ; R3 to licznik wszystkich wpisanych znaków (0-31)
+
+key_loop:
+    acall scan_key
+    jz key_loop
+    
+    ; Logika zarzadzania liniami
+    cjne R3, #16, check_32
+    LCDcntrlWR #HOM2    ; Przejscie do 2 linii po 16 znakach
+    sjmp write_char
+check_32:
+    cjne R3, #32, write_char
+    LCDcntrlWR #CLEAR   ; Czysc i wróc do 1 linii po 32 znakach
+    LCDcntrlWR #HOME
+    mov R3, #0
+
+write_char:
+    add A, #48      ; Konwersja kodu klawisza na ASCII (uproszczona)
+    LCDcharWR
+    inc R3
+    acall wait_release ; Zapobieganie repetycji (Zadanie 3)
+    sjmp key_loop
+
+wait_release:
+    mov A, P0
+    cpl A
+    anl A, #0FH
+    jnz wait_release ; czekaj az puszcza klawisz
+    ret
+
+scan_key:
+    mov P0, #00H
+    mov A, P0
+    cpl A
+    anl A, #0FH
+    ret
+
+END

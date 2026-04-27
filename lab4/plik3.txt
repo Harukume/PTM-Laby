@@ -1,0 +1,73 @@
+; Adresy LCD [cite: 6, 8, 10]
+LCDstatus  equ 0FF2EH
+LCDcontrol equ 0FF2CH
+LCDdataWR  equ 0FF2DH
+
+#define HOME 0x80
+#define HOM2 0xc0
+#define CLEAR 0x01
+#define INITDISP 0x38
+#define LCDON    0x0e
+
+ORG 0100H
+ljmp start
+
+; Makra identyczne jak w dokumentacji
+LCDcntrlWR MACRO x
+ LOCAL loop
+ loop: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,loop
+  MOV DPTR,#LCDcontrol
+  MOV A,x
+  MOVX @DPTR,A
+ENDM
+
+LCDcharWR MACRO
+ LOCAL tutu
+ PUSH ACC
+ tutu: MOV DPTR,#LCDstatus
+  MOVX A,@DPTR
+  JB ACC.7,tutu
+  MOV DPTR,#LCDdataWR
+  POP ACC
+  MOVX @DPTR,A
+ENDM
+
+init_LCD MACRO
+ LCDcntrlWR #INITDISP
+ LCDcntrlWR #CLEAR
+ LCDcntrlWR #LCDON
+ENDM
+
+ORG 0100H
+start:
+    init_LCD
+
+input_cycle:
+    ; 1. Czekaj na nacisniecie
+    acall scan_key
+    jz input_cycle
+    mov R4, A       ; zapisz kod wcisnietego klawisza
+
+    ; 2. Czekaj na zwolnienie (klucz do Zadania 3)
+wait_for_up:
+    acall scan_key
+    jnz wait_for_up ; jesli klawisz wciaz wcisniety, petla
+
+    ; 3. Dopiero po zwolnieniu wykonaj operacje
+    mov A, R4
+    add A, #48      ; przykladowa konwersja
+    LCDcharWR
+    
+    sjmp input_cycle
+
+scan_key:
+    ; Procedura skanowania klawiatury matrycowej zestawu ZD537 
+    mov P0, #0F0H   ; ustawienie bitów wierszy
+    mov A, P0
+    cpl A
+    anl A, #0FH     ; maskowanie kolumn
+    ret
+
+END
