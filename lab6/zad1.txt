@@ -91,7 +91,6 @@ POKAZ_ZEGAR:
 	RET
 
 ; aktualizacja zegara
-
 ZEGAR:
 	INC R7		; licznik sekund
 	MOV A,R7
@@ -129,7 +128,6 @@ EKRAN:
 	RET
 
 ; dodawanie godziny
-
 GODZINA_PLUS:
 	INC R5		; zwiekszenie godzin
 
@@ -143,7 +141,6 @@ PLUS_OK:
 	RET
 
 ; odjecie godziny
-
 GODZINA_MINUS:
 	MOV A,R5
 	JNZ MINUS_NORMAL
@@ -159,7 +156,6 @@ MINUS_END:
 	RET
 
 ; glowny program
-
 START:
 	init_LCD
 	MOV TMOD,#01H 		; konfiguracja timera
@@ -170,29 +166,27 @@ START:
 	MOV R5,#00H	; inicjacja godzin
 	MOV R6,#00H	; inicjacja minut
 	MOV R7,#00H	; inicjacja sekund
-	MOV R4,#01H		; flaga pracy zegara
-					; 01H - start
-					; 00H - stop
+	MOV R4,#01H		; flaga pracy zegara (01H - start, 00H - stop)
 
 	MOV R0,#20 		; licznik odmierzen 20 x 50ms
 
 	ACALL POKAZ_ZEGAR	; wyswietlenie zegara
 
 ; petla glowna i guziki
-
 MAIN:
-	; --- ZAMIANA: PRZYCISK STOP TERAZ POD P3.2 ---
+	; --- GUZIK P3.2: STOP ---
 	JB P3.2, START_BTN
-	MOV R4, #00H		; Zatrzymanie zegara
-WAIT2_STOP:
-	JNB P3.2, WAIT2_STOP	; Oczekiwanie na puszczenie przycisku
+	MOV R4,#00H			; Zatrzymanie logiczne odliczania
+WAIT_STOP:
+	JNB P3.2, WAIT_STOP	; Oczekiwanie na puszczenie guzika STOP
 
 START_BTN:
-	; --- ZAMIANA: PRZYCISK START TERAZ POD P3.3 ---
+	; --- GUZIK P3.3: START ---
 	JB P3.3, PLUS_BTN
-	MOV R4, #01H		; Uruchomienie zegara
-WAIT3_START:
-	JNB P3.3, WAIT3_START	; Oczekiwanie na puszczenie przycisku
+	MOV R0,#20			; POPRAWKA: Resetujemy licznik do pełnej sekundy przy starcie
+	MOV R4,#01H			; Uruchomienie logiczne odliczania
+WAIT_START:
+	JNB P3.3, WAIT_START; Oczekiwanie na puszczenie guzika START
 
 PLUS_BTN:
 	JB P3.4, MINUS_BTN
@@ -206,16 +200,16 @@ MINUS_BTN:
 WAIT2:
 	JNB P3.5, WAIT2		; oczekiwanie na puszczenie przycisku
 
-; odmierzanie
+; odmierzanie czasu (Nieblokujące)
 LICZNIK:
-	MOV A, R4		; sprawdzenie flagi pracy
-	JZ MAIN			; jezeli stop - powrot
+	MOV A,R4		; Sprawdzenie flagi pracy
+	JZ MAIN			; Jeżeli STOP (R4=0) -> wracaj na start pętli MAIN
 
-	MOV A, R0   		; sprawdzenie czy minęła 1 sekunda
-	JNZ MAIN   		; poprawione na nieblokujące sprawdzanie
+	MOV A,R0   		; Sprawdzenie czy minęło 20 x 50ms (1 sekunda)
+	JNZ MAIN   		; Jeżeli R0 != 0, leć dalej sprawdzać przyciski w MAIN
 
-	MOV R0, #20		; ustawienie nowego odmierzenia
-	ACALL ZEGAR		; aktualizacja zegara
-	JMP MAIN		; powrot do petli glownej
+	MOV R0,#20		; Ustawienie nowego odmierzenia na kolejną sekundę
+	ACALL ZEGAR		; Aktualizacja wartości na wyświetlaczu
+	JMP MAIN		; Powrót na początek pętli głównej
 
 	END START
