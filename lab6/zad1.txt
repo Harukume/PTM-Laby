@@ -74,120 +74,152 @@ putdigitLCD:	mov b, #10
 // funkcaj wypisywania znaku na LCD
 putcharLCD:	LCDcharWR
 			ret
-		 
 
-// wyznaczanie biezacej wartosci zegara i jego wyswietlanie na LCD
-ZEGAR:		INC R7				; licznik sekund
-			MOV A, R7			; obsluga sekund
-			CLR C
-			SUBB A, #60			; przepelnienie sekund
-			JZ MINUTY
-			LCDcntrlWR #HOME	; wyswietlenie calego zegara
-			MOV A, R5			; godziny
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R6			; minuty
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R7			; sekundy
-			ACALL putdigitLCD
-			JMP FINAL
-MINUTY:		MOV R7, #00H		; zerowanie sekund
-			INC R6				; licznik minut
-			MOV A, R6			; obsluga minut
-			CLR C
-			SUBB A, #60			; przepelnienie minut
-			JZ GODZINY
-			LCDcntrlWR #HOME	; wyswietlenie calego zegara
-			MOV A, R5			; godziny
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R6			; minuty
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R7			; sekundy
-			ACALL putdigitLCD
-			JMP FINAL
-GODZINY:	MOV R6, #00H		; zerowanie minut
-			INC R5				; licznik godzin
-			MOV A, R5
-			CLR C
-			SUBB A, #24			; przepelenienie godzin - doba
-			JNZ EKRAN
-			MOV R5, #00H		; zerowanie godzin
-EKRAN:		LCDcntrlWR #HOME	; wyswietlenie calego zegara
-			MOV A, R5			; godziny
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R6			; minuty
-			ACALL putdigitLCD
-			MOV A, #":"			; separator
-			ACALL putcharLCD
-			MOV A, R7			; sekundy
-			ACALL putdigitLCD
-FINAL:		RET
+; wyswietlanie
+POKAZ_ZEGAR:
+	LCDcntrlWR #HOME	; ustawienie kursora
+	MOV A,R5		; godziny
+	ACALL putdigitLCD
+	MOV A,#":"		; separator
+	ACALL putcharLCD
+	MOV A,R6		; minuty
+	ACALL putdigitLCD
+	MOV A,#":"		; separator
+	ACALL putcharLCD
+	MOV A,R7		; sekundy
+	ACALL putdigitLCD
+	RET
 
-        ; program glówny
-START:	init_LCD
-		MOV TMOD, #01H 			; konfiguracja timera
-		MOV TH0, #3CH 			; ladowanie
-		MOV TL0, #0B0H 			; stalej timera na 50ms
-		SETB TR0      			; timer start
-		MOV IE, #82H  			; przerwania wlacz
-		MOV R5, #00H			; inicjacja zegara
-		MOV R6, #00H
-		MOV R7, #0FFH
-		ACALL ZEGAR				; wyswietlenie zainicjowanego zegara
-		MOV A, #0FH
-		MOV P1, A    			; zapalenie diód
-		MOV R0, #20 			; licznik odmierzen 20 x 50ms
+; aktualizacja zegara
 
-		clr c
-		mov a, p3
-		subb a, #0cfh ; 1100 1111 - koniec
-		jz finito
-		mov a, p3
-		subb a, #0dfh ; 1101 1111
-		jnz omin1
-	skok1:
-		ljmp przycisk1
-	omin1:
-		mov a, p3
-		subb a, #0efh ; 1110 1111
-		jnz omin2
-	skok2:
-		ljmp przycisk2
-	omin2:
-		mov a, p3
-		subb a, #0f7h ; 1111 0111
-		jnz omin3
-	skok3:
-		ljmp przycisk3
-	omin3:
-		mov a, p3
-		subb a, #0fbh ; 1111 1011
-		jnz omin4
-	skok4:
-		ljmp przycisk4
-	omin4:
-		sjmp begin		
+ZEGAR:
+	INC R7		; licznik sekund
+	MOV A,R7
+	CLR C
+	SUBB A,#60	; przepelnienie sekund
+	JZ MINUTY
 
+	ACALL POKAZ_ZEGAR
+	RET
 
-CZEKAM: MOV A, R0   			; czekam, a timer
-		JNZ CZEKAM   			; mierzy laczny czas 1s
-		MOV R0, #20				; po zgloszeniu przerwania - ustawiam na nowo licznik odmierzen 20 x 50ms
-		ACALL ZEGAR				; uruchomienie procedury oblugi i wyswietlenia zegara
-		MOV A, P1  				; zmiana
-		CPL A       			; swiecenia
-		MOV P1, A    			; diód
-		JMP CZEKAM    			; czekam na kolejna sekunde
-		NOP
-		NOP
-		NOP
-		JMP $
+MINUTY:
+	MOV R7,#00H	; zerowanie sekund
+	INC R6		; licznik minut
+
+	MOV A,R6
+	CLR C
+	SUBB A,#60	; przepelnienie minut
+	JZ GODZINY
+	ACALL POKAZ_ZEGAR
+	RET
+
+GODZINY:
+	MOV R6,#00H	; zerowanie minut
+	INC R5		; licznik godzin
+
+	MOV A,R5
+	CLR C
+	SUBB A,#24	; przepelnienie godzin
+	JNZ EKRAN
+
+	MOV R5,#00H	; nowa doba
+
+EKRAN:
+
+	ACALL POKAZ_ZEGAR
+	RET
+
+; dodawanie godziny
+
+GODZINA_PLUS:
+	INC R5		; zwiekszenie godzin
+
+	MOV A,R5
+	CLR C
+	SUBB A,#24	; sprawdzenie przepelnienia
+	JNZ PLUS_OK
+	MOV R5,#00H	; powrot do 00
+PLUS_OK:
+	ACALL POKAZ_ZEGAR
+	RET
+
+; odjecie godziny
+
+GODZINA_MINUS:
+	MOV A,R5
+	JNZ MINUS_NORMAL
+
+	MOV R5,#23	; przejscie z 00 na 23
+	SJMP MINUS_END
+
+MINUS_NORMAL:
+	DEC R5		; zmniejszenie godzin
+
+MINUS_END:
+	ACALL POKAZ_ZEGAR
+	RET
+
+; glowny program
+
+START:
+	init_LCD
+	MOV TMOD,#01H 		; konfiguracja timera
+	MOV TH0,#3CH 		; ladowanie
+	MOV TL0,#0B0H 		; stalej timera 50ms
+	SETB TR0      		; timer start
+	MOV IE,#82H  		; przerwania wlacz
+	MOV R5,#00H	; inicjacja godzin
+	MOV R6,#00H	; inicjacja minut
+	MOV R7,#00H	; inicjacja sekund
+	MOV R4,#01H		; flaga pracy zegara
+					; 01H - start
+					; 00H - stop
+
+	MOV R0,#20 		; licznik odmierzen 20 x 50ms
+
+	ACALL POKAZ_ZEGAR	; wyswietlenie zegara
+
+; petla glowna i guziki
+
+MAIN:
+	JB P3.2,STOP_BTN
+	MOV R4,#01H		; uruchomienie zegara
+
+WAIT4:
+	JNB P3.2, WAIT4		; oczekiwanie na puszczenie przycisku
+	
+STOP_BTN:
+	JB P3.3,PLUS_BTN
+	MOV R4,#00H		; zatrzymanie zegara
+WAIT3:
+	JNB P3.3,WAIT3		; oczekiwanie na puszczenie przycisku
+PLUS_BTN:
+	JB P3.4,MINUS_BTN
+	ACALL GODZINA_PLUS
+WAIT1:
+	JNB P3.4,WAIT1		; oczekiwanie na puszczenie przycisku
+MINUS_BTN:
+	JB P3.5,LICZNIK
+	ACALL GODZINA_MINUS
+WAIT2:
+	JNB P3.5,WAIT2		; oczekiwanie na puszczenie przycisku
+
+; odmierzanie
+LICZNIK:
+	MOV A,R4		; sprawdzenie flagi pracy
+	JZ MAIN			; jezeli stop - powrot
+
+	MOV A,R0   		; czekam, a timer mierzy laczny czas 1s
+	JNZ MAIN   		; 
+
+	MOV R0,#20		; ustawienie nowego odmierzenia
+	ACALL ZEGAR		; aktualizacja zegara
+	JMP MAIN		; powrot do petli glownej
+
+	NOP
+	NOP
+	NOP
+
+	JMP $
+
 END START

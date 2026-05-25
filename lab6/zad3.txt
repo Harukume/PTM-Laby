@@ -1,0 +1,417 @@
+ljmp start
+
+P5 equ 0F8H
+P6 equ 0FAH          ; Port brzęczyka (buzzer)
+P7 equ 0DBH
+	
+LCDstatus  equ 0FF2EH       
+LCDcontrol equ 0FF2CH       
+LCDdataWR  equ 0FF2DH       
+
+// bajty sterujace LCD
+#define  HOME     0x80     
+#define  INITDISP 0x38     
+#define  HOM2     0xc0     
+#define  LCDON    0x0e     
+#define  CLEAR    0x01     
+
+// linie klawiatury - sterowanie na port P5
+#define LINE_1		0x7f	// 0111 1111
+#define LINE_2		0xbf	// 1011 1111
+#define	LINE_3		0xdf	// 1101 1111
+#define LINE_4		0xef	// 1110 1111
+#define ALL_LINES	0x0f	// 0000 1111
+
+; Zmienne w pamięci RAM do obsługi budzika i konfiguracji
+LIMIT_WPR   EQU 30H   ; Przechowuje aktualny limit (24 lub 60)
+ZATWIERDZ   EQU 31H   ; Przechowuje kod klawisza zatwierdzenia (11 dla #, 10 dla *)
+BUDZ_GODZ   EQU 32H   ; Godzina budzika
+BUDZ_MIN    EQU 33H   ; Minuta budzika
+
+ORG 000BH     				
+	MOV TH0, #3CH 			
+	MOV TL0, #0B0H 			
+	DEC R0        			
+	RETI          			
+
+org 0100H
+		
+// makra LCD
+LCDcntrlWR MACRO x          
+           LOCAL loop       
+loop: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,loop       
+      MOV  DPTR,#LCDcontrol 
+      MOV  A, x             
+      MOVX @DPTR,A          
+      ENDM
+	  
+LCDcharWR MACRO
+      LOCAL tutu            
+      PUSH ACC              
+tutu: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,tutu       
+      MOV  DPTR,#LCDdataWR  
+      POP  ACC              
+      MOVX @DPTR,A          
+      ENDM
+	  
+init_LCD MACRO
+         LCDcntrlWR #INITDISP 
+         LCDcntrlWR #CLEAR    
+         LCDcntrlWR #LCDON    
+         ENDM
+		 
+putdigitLCD:	mov b, #10
+				div ab				
+				add a, #30H			
+				acall putcharLCD
+				mov a, b			
+				add a, #30H			
+				acall putcharLCD
+				ret
+
+putcharLCD:	LCDcharWR
+			ret
+
+; wyswietlanie aktualnego czasu zegara
+POKAZ_ZEGAR:
+	LCDcntrlWR #HOME	
+	MOV A,R5		; godziny
+	ACALL putdigitLCD
+	MOV A,#":"		
+	ACALL putcharLCD
+	MOV A,R6		; minuty
+	ACALL putdigitLCD
+	MOV A,#":"		
+	ACALL putcharLCD
+	MOV A,R7		; sekundy
+	ACALL putdigitLCD
+	RET
+
+; aktualizacja zegara
+ZEGAR:
+	INC R7		
+	MOV A,R7
+	CLR C
+	SUBB A,#60	
+	JZ MINUTY
+	ACALL POKAZ_ZEGAR
+	ACALL SPRAWDZ_BUDZIK
+	RET
+
+MINUTY:
+	MOV R7,#00H	
+	INC R6		
+	MOV A,R6
+	CLR C
+	SUBB A,#60	
+	JZ GODZINY
+	ACALL POKAZ_ZEGAR
+	ACALL SPRAWDZ_BUDZIK
+	RET
+
+GODZINY:
+	MOV R6,#00H	
+	INC R5		
+	MOV A,R5
+	CLR C
+	SUBB A,#24	
+	JNZ EKRAN
+	MOV R5,#00H	
+
+EKRAN:
+	ACALL POKAZ_ZEGAR
+	ACALL SPRAWDZ_BUDZIK
+	RET
+
+; Funkcja sprawdzająca stan budzika
+SPRAWDZ_BUDZIK:
+	; Porównanie godzin
+	MOV A, R5
+	XRL A, BUDZ_GODZ
+	JNZ WYLACZ_BUZIK
+	
+	; Porównanie minut
+	MOV A, R6
+	XRL A, BUDZ_MIN
+	JNZ WYLACZ_BUZIK
+	
+	; Jeśli sekundy są zerowe (początek minuty budzenia) -> włącz brzęczyk
+	MOV A, R7
+	JNZ WYLACZ_BUZIK
+	
+	MOV P6, #00H        ; Załączenie brzęczyka (zakładając logiczne 0 na P6)
+	RET
+
+WYLACZ_BUZIK:
+	MOV P6, #0FFH       ; Wyłączenie brzęczyka
+	RET
+
+; dodawanie godziny z przycisku
+GODZINA_PLUS:
+	INC R5		
+	MOV A,R5
+	CLR C
+	SUBB A,#24	
+	JNZ PLUS_OK
+	MOV R5,#00H	
+PLUS_OK:
+	ACALL POKAZ_ZEGAR
+	RET
+
+; odjecie godziny z przycisku
+GODZINA_MINUS:
+	MOV A,R5
+	JNZ MINUS_NORMAL
+	MOV R5,#23	
+	SJMP MINUS_END
+MINUS_NORMAL:
+	DEC R5		
+MINUS_END:
+	ACALL POKAZ_ZEGAR
+	RET
+
+; =========================================================================
+; OBSŁUGA KLAWIATURY I USTAWIANIA ZEGARA / BUDZIKA
+; =========================================================================
+
+CZYTAJ_KLAWISZ:
+	MOV P5,#LINE_1
+	MOV A,P7
+	ANL A,#0FH
+	XRL A,#0FH
+	JNZ KLAW_OK
+	MOV P5,#LINE_2
+	MOV A,P7
+	ANL A,#0FH
+	XRL A,#0FH
+	JNZ KLAW_OK
+	MOV P5,#LINE_3
+	MOV A,P7
+	ANL A,#0FH
+	XRL A,#0FH
+	JNZ KLAW_OK
+	MOV P5,#LINE_4
+	MOV A,P7
+	ANL A,#0FH
+	XRL A,#0FH
+	JNZ KLAW_OK
+	
+	MOV A,#0FFH			
+	RET
+
+KLAW_OK:
+	MOV R1,P7			
+	MOV A,P5			
+	ANL A,#0F0H
+	MOV R2,A			; Używamy R2 tymczasowo zamiast R3
+
+	MOV A,R1			
+	ANL A,#0FH			
+	ORL A,R2			
+	MOV R1,A			
+
+	MOV DPTR,#TAB_KLAWISZ
+	MOV R2,#0
+SZUKAJ_KODU:
+	MOV A,R2
+	MOVC A,@A+DPTR
+	XRL A,R1
+	JZ ZNALEZIONO
+	INC R2
+	CJNE R2,#12,SZUKAJ_KODU
+	MOV A,#0FFH
+	RET
+ZNALEZIONO:
+	MOV A,R2			; A: 0-9 = cyfry, 10 = *, 11 = #
+	RET
+
+CZEKAJ_NA_KLAWISZ:
+	ACALL CZYTAJ_KLAWISZ
+	XRL A,#0FFH
+	JZ CZEKAJ_NA_KLAWISZ
+	
+	MOV R2,A
+CZEKAJ_PUSZCZENIE:
+	ACALL CZYTAJ_KLAWISZ
+	XRL A,#0FFH
+	JNZ CZEKAJ_PUSZCZENIE
+	MOV A,R2
+	RET
+
+; Uniwersalna pętla wprowadzania liczby dwucyfrowej
+WPROWADZ_WARTOSC:
+	MOV R4,#0			; Rejestr budowanej liczby (wynik)
+	CLR F0				; F0=0 -> pierwsza cyfra (dziesiątki)
+CZEKAJ_CYFRA:
+	ACALL CZEKAJ_NA_KLAWISZ
+	XRL A, ZATWIERDZ	; Sprawdzenie czy naciśnięto zdefiniowany klawisz zatwierdzenia (* lub #)
+	JNZ SPRAWDZ_CZY_CYFRA 
+	
+	; Wciśnięto klawisz zatwierdzenia -> Kończymy i zwracamy wynik w A
+	MOV A,R4
+	RET
+
+SPRAWDZ_CZY_CYFRA:
+	; Odzyskaj kod klawisza (ponieważ XRL zmieniło akumulator)
+	ACALL CZYTAJ_KLAWISZ 
+	CLR C
+	SUBB A,#10
+	JNC CZEKAJ_CYFRA	; Ignoruj klawisze funkcyjne podczas wpisywania cyfr
+	
+	ACALL CZYTAJ_KLAWISZ
+	MOV R1,A			; R1 = nowa cyfra
+	JB F0,DODAJ_JEDNOSC
+	
+	; Pierwsza cyfra (dziesiątki)
+	MOV A,R1
+	MOV B,#10
+	MUL AB
+	MOV R4,A
+	SETB F0				
+	SJMP AKTUALIZUJ_WIDOK
+
+DODAJ_JEDNOSC:
+	; Druga cyfra (jedności)
+	MOV A,R4
+	ADD A,R1
+	
+	; Kontrola zakresu (Czy nowa liczba < LIMIT_WPR?)
+	MOV R2,A			
+	CLR C
+	SUBB A, LIMIT_WPR
+	JNC BLAD_ZAKRESU	
+	
+	MOV A,R2			
+	MOV R4,A			
+	CLR F0				
+	SJMP AKTUALIZUJ_WIDOK
+
+BLAD_ZAKRESU:
+	MOV R4,#0			
+	CLR F0				
+
+AKTUALIZUJ_WIDOK:
+	; Pokazujemy wpisywaną wartość w locie (na czas konfiguracji podmieniamy rejestry czasu)
+	MOV A, LIMIT_WPR
+	CJNE A,#24,UST_MIN_WIDOK
+	MOV A,R4			
+	MOV R5,A			
+	SJMP RYSUJ
+UST_MIN_WIDOK:
+	MOV A,R4			
+	MOV R6,A			
+RYSUJ:
+	ACALL POKAZ_ZEGAR
+	SJMP CZEKAJ_CYFRA
+
+; =========================================================================
+; GŁÓWNY PROGRAM
+; =========================================================================
+
+START:
+	init_LCD
+	MOV P6, #0FFH       ; Wyłączenie buzzera na starcie
+	
+	; Domyślny start wyświetlacza od zer
+	MOV R5,#00H	
+	MOV R6,#00H	
+	MOV R7,#00H	
+	ACALL POKAZ_ZEGAR
+
+	; --- SEKCJA 1: USTAWIANIA CZASU BIEŻĄCEGO (Zatwierdzane przez #) ---
+	MOV ZATWIERDZ, #11	; Klawisz '#' zatwierdza czas główny
+	
+	; 1. Wprowadzanie Godzin (limit 24)
+	MOV LIMIT_WPR,#24
+	ACALL WPROWADZ_WARTOSC
+	MOV R5,A			
+	
+	; 2. Wprowadzanie Minut (limit 60)
+	MOV LIMIT_WPR,#60
+	ACALL WPROWADZ_WARTOSC
+	MOV R6,A			
+
+	; --- SEKCJA 2: USTAWIANIA BUDZIKA (Zatwierdzane przez *) ---
+	; Wizualnie zerujemy ekran na moment wpisywania alarmu, aby użytkownik widział co ustawia
+	MOV R5,#00H
+	MOV R6,#00H
+	ACALL POKAZ_ZEGAR
+
+	MOV ZATWIERDZ, #10	; Klawisz '*' zatwierdza czas budzika
+	
+	; 3. Wprowadzanie Godzin Budzika (limit 24)
+	MOV LIMIT_WPR,#24
+	ACALL WPROWADZ_WARTOSC
+	MOV BUDZ_GODZ, A	
+	
+	; 4. Wprowadzanie Minut Budzika (limit 60)
+	MOV LIMIT_WPR,#60
+	ACALL WPROWADZ_WARTOSC
+	MOV BUDZ_MIN, A	
+
+	; Po zakończeniu konfiguracji przywracamy czas główny na ekran i startujemy zegar
+	ACALL POKAZ_ZEGAR
+
+	MOV TMOD,#01H 		
+	MOV TH0,#3CH 		
+	MOV TL0,#0B0H 		
+	SETB TR0      		
+	MOV IE,#82H  		
+	
+	MOV R4,#01H			
+	MOV R0,#20 			
+
+	ACALL POKAZ_ZEGAR	
+
+; Nieblokująca pętla główna
+MAIN:
+	; Przycisk START (P3.2)
+	JB P3.2,STOP_BTN
+	MOV R4,#01H		
+WAIT4:
+	JNB P3.2,WAIT4		
+	
+STOP_BTN:
+	; Przycisk STOP (P3.3)
+	JB P3.3,PLUS_BTN
+	MOV R4,#00H		
+WAIT3:
+	JNB P3.3,WAIT3		
+
+PLUS_BTN:
+	; Przycisk PLUS (P3.4)
+	JB P3.4,MINUS_BTN
+	ACALL GODZINA_PLUS
+WAIT1:
+	JNB P3.4,WAIT1		
+
+MINUS_BTN:
+	; Przycisk MINUS (P3.5)
+	JB P3.5,LICZNIK
+	ACALL GODZINA_MINUS
+WAIT2:
+	JNB P3.5,WAIT2		
+
+; Sekcja odliczania (Nieblokująca)
+LICZNIK:
+	MOV A,R4		
+	JZ MAIN			
+
+	MOV A,R0   		
+	JNZ MAIN   		; Powrót do MAIN, jeśli sekunda jeszcze nie minęła
+	
+	MOV R0,#20		
+	ACALL ZEGAR		
+	JMP MAIN		
+
+; =========================================================================
+; TABELA KODÓW MATRYCY KLAWIATURY
+; =========================================================================
+TAB_KLAWISZ: 
+	DB 077h, 07Bh, 07Dh, 0B7h, 0BBh, 0BDh, 0D7h, 0DBh, 0DDh, 0E7h, 0EBh, 0EDh
+
+	END START
