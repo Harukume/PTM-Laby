@@ -27,6 +27,9 @@ LIMIT_WPR   EQU 30H   ; Przechowuje aktualny limit (24 lub 60)
 ZATWIERDZ   EQU 31H   ; Przechowuje kod klawisza zatwierdzenia (11 dla #, 10 dla *)
 BUDZ_GODZ   EQU 32H   ; Godzina budzika
 BUDZ_MIN    EQU 33H   ; Minuta budzika
+ZAPAS_GODZ  EQU 34H   ; Pamięć czasu głównego - godziny
+ZAPAS_MIN   EQU 35H   ; Pamięć czasu głównego - minuty
+KOD_KLAWISZA EQU 36H  ; Przechowalnia pobranego klawisza
 
 ORG 000BH     				
 	MOV TH0, #3CH 			
@@ -129,21 +132,18 @@ EKRAN:
 
 ; Funkcja sprawdzająca stan budzika
 SPRAWDZ_BUDZIK:
-	; Porównanie godzin
 	MOV A, R5
 	XRL A, BUDZ_GODZ
 	JNZ WYLACZ_BUZIK
 	
-	; Porównanie minut
 	MOV A, R6
 	XRL A, BUDZ_MIN
 	JNZ WYLACZ_BUZIK
 	
-	; Jeśli sekundy są zerowe (początek minuty budzenia) -> włącz brzęczyk
 	MOV A, R7
 	JNZ WYLACZ_BUZIK
 	
-	MOV P6, #00H        ; Załączenie brzęczyka (zakładając logiczne 0 na P6)
+	MOV P6, #00H        ; Załączenie brzęczyka
 	RET
 
 WYLACZ_BUZIK:
@@ -207,7 +207,7 @@ KLAW_OK:
 	MOV R1,P7			
 	MOV A,P5			
 	ANL A,#0F0H
-	MOV R2,A			; Używamy R2 tymczasowo zamiast R3
+	MOV R2,A			
 
 	MOV A,R1			
 	ANL A,#0FH			
@@ -226,7 +226,7 @@ SZUKAJ_KODU:
 	MOV A,#0FFH
 	RET
 ZNALEZIONO:
-	MOV A,R2			; A: 0-9 = cyfry, 10 = *, 11 = #
+	MOV A,R2			
 	RET
 
 CZEKAJ_NA_KLAWISZ:
@@ -236,77 +236,79 @@ CZEKAJ_NA_KLAWISZ:
 	
 	MOV R2,A
 CZEKAJ_PUSZCZENIE:
-	ACALL CZYTAJ_KLAWISZ
-	XRL A,#0FFH
+	MOV P5,#00H         ; Odcięcia linii dla poprawnego powrotu P7 do stanu 0FH
+	MOV A,P7
+	ANL A,#0FH
+	XRL A,#0FH
 	JNZ CZEKAJ_PUSZCZENIE
+	
 	MOV A,R2
 	RET
 
 ; Uniwersalna pętla wprowadzania liczby dwucyfrowej
 WPROWADZ_WARTOSC:
-	MOV R4,#0			; Rejestr budowanej liczby (wynik)
-	CLR F0				; F0=0 -> pierwsza cyfra (dziesiątki)
+	MOV R4,#0			
+	CLR F0				
 CZEKAJ_CYFRA:
 	ACALL CZEKAJ_NA_KLAWISZ
-	XRL A, ZATWIERDZ	; Sprawdzenie czy naciśnięto zdefiniowany klawisz zatwierdzenia (* lub #)
+	MOV KOD_KLAWISZA, A 
+	
+	XRL A, ZATWIERDZ	
 	JNZ SPRAWDZ_CZY_CYFRA 
 	
-	; Wciśnięto klawisz zatwierdzenia -> Kończymy i zwracamy wynik w A
-	MOV A,R4
+	MOV A,R4			; Zatwierdzono klawiszem sterującym -> wyjdź
 	RET
 
 SPRAWDZ_CZY_CYFRA:
-	; Odzyskaj kod klawisza (ponieważ XRL zmieniło akumulator)
-	ACALL CZYTAJ_KLAWISZ 
+	MOV A, KOD_KLAWISZA 
 	CLR C
 	SUBB A,#10
-	JNC CZEKAJ_CYFRA	; Ignoruj klawisze funkcyjne podczas wpisywania cyfr
+	JNC CZEKAJ_CYFRA	; Odrzucenie znaków pozacyfrowych (*, #)
 	
-	ACALL CZYTAJ_KLAWISZ
-	MOV R1,A			; R1 = nowa cyfra
-	JB F0,DODAJ_JEDNOSC
+	MOV A, KOD_KLAWISZA
+	MOV R1, A			
+	JB F0, DODAJ_JEDNOSC
 	
 	; Pierwsza cyfra (dziesiątki)
-	MOV A,R1
-	MOV B,#10
+	MOV A, R1
+	MOV B, #10
 	MUL AB
-	MOV R4,A
+	MOV R4, A
 	SETB F0				
 	SJMP AKTUALIZUJ_WIDOK
 
 DODAJ_JEDNOSC:
 	; Druga cyfra (jedności)
-	MOV A,R4
-	ADD A,R1
+	MOV A, R4
+	ADD A, R1
 	
-	; Kontrola zakresu (Czy nowa liczba < LIMIT_WPR?)
-	MOV R2,A			
+	; Kontrola zakresu (czy wpisana wartość mieści się w limicie?)
+	MOV R2, A			
 	CLR C
 	SUBB A, LIMIT_WPR
 	JNC BLAD_ZAKRESU	
 	
-	MOV A,R2			
-	MOV R4,A			
+	MOV A, R2			
+	MOV R4, A			
 	CLR F0				
-	SJMP AKTUALIZUJ_WIDOK
+	SJMP AKTUALIZUJ_WIDOK  ; KLUCZOWA POPRAWKA: skok omijający czyszczenie rejestru R4
 
 BLAD_ZAKRESU:
-	MOV R4,#0			
+	MOV R4, #0			
 	CLR F0				
 
 AKTUALIZUJ_WIDOK:
-	; Pokazujemy wpisywaną wartość w locie (na czas konfiguracji podmieniamy rejestry czasu)
 	MOV A, LIMIT_WPR
 	CJNE A,#24,UST_MIN_WIDOK
-	MOV A,R4			
-	MOV R5,A			
+	MOV A, R4			
+	MOV R5, A			
 	SJMP RYSUJ
 UST_MIN_WIDOK:
-	MOV A,R4			
-	MOV R6,A			
+	MOV A, R4			
+	MOV R6, A			
 RYSUJ:
 	ACALL POKAZ_ZEGAR
-	SJMP CZEKAJ_CYFRA
+	LJMP CZEKAJ_CYFRA
 
 ; =========================================================================
 ; GŁÓWNY PROGRAM
@@ -314,48 +316,45 @@ RYSUJ:
 
 START:
 	init_LCD
-	MOV P6, #0FFH       ; Wyłączenie buzzera na starcie
+	MOV P6, #0FFH       
 	
-	; Domyślny start wyświetlacza od zer
 	MOV R5,#00H	
 	MOV R6,#00H	
 	MOV R7,#00H	
 	ACALL POKAZ_ZEGAR
 
-	; --- SEKCJA 1: USTAWIANIA CZASU BIEŻĄCEGO (Zatwierdzane przez #) ---
-	MOV ZATWIERDZ, #11	; Klawisz '#' zatwierdza czas główny
+	; --- SEKCJA 1: USTAWIANIA CZASU BIEŻĄCEGO ---
+	MOV ZATWIERDZ, #11	; '#' zatwierdza czas główny
 	
-	; 1. Wprowadzanie Godzin (limit 24)
 	MOV LIMIT_WPR,#24
 	ACALL WPROWADZ_WARTOSC
-	MOV R5,A			
+	MOV ZAPAS_GODZ, A	
 	
-	; 2. Wprowadzanie Minut (limit 60)
 	MOV LIMIT_WPR,#60
 	ACALL WPROWADZ_WARTOSC
-	MOV R6,A			
+	MOV ZAPAS_MIN, A	
 
-	; --- SEKCJA 2: USTAWIANIA BUDZIKA (Zatwierdzane przez *) ---
-	; Wizualnie zerujemy ekran na moment wpisywania alarmu, aby użytkownik widział co ustawia
+	; --- SEKCJA 2: USTAWIANIA BUDZIKA ---
 	MOV R5,#00H
 	MOV R6,#00H
 	ACALL POKAZ_ZEGAR
 
-	MOV ZATWIERDZ, #10	; Klawisz '*' zatwierdza czas budzika
+	MOV ZATWIERDZ, #10	; '*' zatwierdza alarm budzika
 	
-	; 3. Wprowadzanie Godzin Budzika (limit 24)
 	MOV LIMIT_WPR,#24
 	ACALL WPROWADZ_WARTOSC
 	MOV BUDZ_GODZ, A	
 	
-	; 4. Wprowadzanie Minut Budzika (limit 60)
 	MOV LIMIT_WPR,#60
 	ACALL WPROWADZ_WARTOSC
-	MOV BUDZ_MIN, A	
+	MOV BUDZ_MIN, A	    
 
-	; Po zakończeniu konfiguracji przywracamy czas główny na ekran i startujemy zegar
-	ACALL POKAZ_ZEGAR
+	; --- PRZYWRÓCENIE CZASU GŁÓWNEGO ---
+	MOV R5, ZAPAS_GODZ  
+	MOV R6, ZAPAS_MIN   
+	ACALL POKAZ_ZEGAR   
 
+	; Start sprzętowy timera
 	MOV TMOD,#01H 		
 	MOV TH0,#3CH 		
 	MOV TL0,#0B0H 		
@@ -396,17 +395,17 @@ MINUS_BTN:
 WAIT2:
 	JNB P3.5,WAIT2		
 
-; Sekcja odliczania (Nieblokująca)
+; Sekcja odliczania
 LICZNIK:
 	MOV A,R4		
 	JZ MAIN			
 
 	MOV A,R0   		
-	JNZ MAIN   		; Powrót do MAIN, jeśli sekunda jeszcze nie minęła
+	JNZ MAIN   		
 	
 	MOV R0,#20		
 	ACALL ZEGAR		
-	JMP MAIN		
+	LJMP MAIN		
 
 ; =========================================================================
 ; TABELA KODÓW MATRYCY KLAWIATURY
