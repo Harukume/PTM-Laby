@@ -21,16 +21,15 @@ LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
 #define LINE_4		0xef	// 1110 1111
 
 ; --- REJESTRY ROBOCZE W RAM ---
-KOD_SKANU    EQU 30H        ; Zapamietany kod skaningowy (np. 77H, 7BH...)
-M_TH0        EQU 31H        ; Tymczasowy rejestr na starszy bajt licznika
-M_TL0        EQU 32H        ; Tymczasowy rejestr na mlodszy bajt licznika
-M_EFEKT      EQU 33H        ; Przechowuje aktywny tryb (0-brak, 1-tercja, 2-kwinta)
+KOD_SKANU    EQU 30H        ; Zapamietany kod skaningowy (np. 77H, 7BH...) [cite: 5, 6]
+M_TH0        EQU 31H        ; Tymczasowy rejestr na starszy bajt licznika [cite: 5, 7]
+M_TL0        EQU 32H        ; Tymczasowy rejestr na mlodszy bajt licznika [cite: 5, 8]
 
 ORG 000BH     ; obsluga przerwania
-	CPL P3.2	; ruch membrana brzeczyka
+	CPL P3.2	; ruch membrana brzeczyka 
 	PUSH ACC	
-	MOV A, R6	; przeladowanie
-	MOV TH0, A 	; stalej timera
+	MOV A, R6	; przeladowanie [cite: 10]
+	MOV TH0, A 	; stalej timera [cite: 10]
 	MOV A, R7
 	MOV TL0, A
 	POP ACC      	
@@ -68,63 +67,63 @@ keymuz:
 			; --- Wartosci TL0 / R7 (Pamiec pod adresem 80xxH) ---
 			mov dptr, #8077H 
 			mov a, #89H 
-			movx @dptr, a     ; Klawisz 1 (C1)
+			movx @dptr, a     ; Klawisz 1 (C1) [cite: 15]
 
 			mov dptr, #807BH 
 			mov a, #0F4H 
-			movx @dptr, a    ; Klawisz 2 (Cis1)
+			movx @dptr, a    ; Klawisz 2 (Cis1) [cite: 16]
 
 			mov dptr, #807DH 
 			mov a, #5AH 
-			movx @dptr, a     ; Klawisz 3 (D1)
+			movx @dptr, a     ; Klawisz 3 (D1) [cite: 17]
 
 			mov dptr, #807EH 
 			mov a, #0B9H 
-			movx @dptr, a    ; Klawisz A (Dis1)
+			movx @dptr, a    ; Klawisz A (Dis1) [cite: 18]
 
 			mov dptr, #80B7H 
 			mov a, #13H 
-			movx @dptr, a     ; Klawisz 4 (E1)
+			movx @dptr, a     ; Klawisz 4 (E1) [cite: 19]
 
 			mov dptr, #80BBH 
 			mov a, #68H 
-			movx @dptr, a     ; Klawisz 5 (F1)
+			movx @dptr, a     ; Klawisz 5 (F1) [cite: 20]
 
 			mov dptr, #80BDH   
 			mov a, #0B9H 
-			movx @dptr, a    ; Klawisz 6 (Fis1)
+			movx @dptr, a    ; Klawisz 6 (Fis1) [cite: 21]
 
 			mov dptr, #80BEH 
 			mov a, #04H 
-			movx @dptr, a     ; Klawisz B (G1)
+			movx @dptr, a     ; Klawisz B (G1) [cite: 22]
 
 			mov dptr, #80D7H 
 			mov a, #4CH 
-			movx @dptr, a     ; Klawisz 7 (Gis1)
+			movx @dptr, a     ; Klawisz 7 (Gis1) [cite: 23]
 
 			mov dptr, #80DBH 
 			mov a, #90H 
-			movx @dptr, a     ; Klawisz 8 (A1)
+			movx @dptr, a     ; Klawisz 8 (A1) [cite: 24]
 
 			mov dptr, #80DDH 
 			mov a, #0CFH 
-			movx @dptr, a    ; Klawisz 9 (Ais1)
+			movx @dptr, a    ; Klawisz 9 (Ais1) [cite: 25]
 
 			mov dptr, #80DEH 
 			mov a, #0CH 
-			movx @dptr, a     ; Klawisz C (H1)
+			movx @dptr, a     ; Klawisz C (H1) [cite: 26]
 
 			mov dptr, #80E7H 
 			mov a, #45H 
-			movx @dptr, a     ; Klawisz * (C2)
+			movx @dptr, a     ; Klawisz * (C2) [cite: 27]
 
 			mov dptr, #80EBH 
 			mov a, #7AH 
-			movx @dptr, a     ; Klawisz 0 (Cis2)
+			movx @dptr, a     ; Klawisz 0 (Cis2) [cite: 28]
 
 			mov dptr, #80EDH 
 			mov a, #0ADH 
-			movx @dptr, a    ; Klawisz # (D2)
+			movx @dptr, a    ; Klawisz # (D2) [cite: 29]
 
 			mov dptr, #80EEH 
 			mov a, #0DDH 
@@ -294,13 +293,12 @@ start:
 	LCDcntrlWR #CLEAR    
 	LCDcntrlWR #LCDON    
 
-	MOV TMOD, #01H ; Timer 0 w tryb 16-bitowy
-	MOV IE, #82H   ; Aktywacja przerwan glosnika
-	MOV M_EFEKT, #00H ; Na starcie tryb normalny (0)
+	MOV TMOD, #01H ; Timer 0 w tryb 16-bitowy [cite: 36]
+	MOV IE, #82H   ; Aktywacja przerwan glosnika [cite: 37]
 
 graj:		
-	CLR TR0       ; Cisza na starcie
-	MOV R4, #00H  
+	CLR TR0       ; Cisza na starcie [cite: 38]
+	MOV R4, #00H  [cite: 38]
 
 key_1:	
 	mov r0, #LINE_1
@@ -312,7 +310,7 @@ key_1:
 	clr c 
 	subb a, r0
 	jz key_2
-	sjmp analizuj_klawisz
+	sjmp pobierz_i_graj
 
 key_2:	
 	mov r0, #LINE_2
@@ -324,7 +322,7 @@ key_2:
 	clr c 
 	subb a, r0
 	jz key_3
-	sjmp analizuj_klawisz
+	sjmp pobierz_i_graj
 
 key_3:	
 	mov r0, #LINE_3
@@ -336,7 +334,7 @@ key_3:
 	clr c 
 	subb a, r0
 	jz key_4
-	sjmp analizuj_klawisz
+	sjmp pobierz_i_graj
 
 key_4:	
 	mov r0, #LINE_4
@@ -348,114 +346,96 @@ key_4:
 	clr c 
 	subb a, r0
 	jz brak_bodzca
-	sjmp analizuj_klawisz
+	sjmp pobierz_i_graj
 
 brak_bodzca:
+	LCDcntrlWR #CLEAR ; Brak wcisnietego klawisza -> czysty ekran [cite: 39]
 	sjmp graj
 
 ; =========================================================================
-; ROZDRZĘBIENIE: CZY TO NUTKA, CZY ZMIANA TRYBU?
+; SEKCJA POBIERANIA DANYCH Z XRAM I TRANSPOZYCJI (P3)
 ; =========================================================================
-analizuj_klawisz:
+pobierz_i_graj:
 	mov a, r2
-	mov KOD_SKANU, a
+	mov KOD_SKANU, a [cite: 40]
 
-	; Klawisz '*' (kod 0E7H) -> Włącz Tercję
-	cjne a, #0E7H, sprawdz_0
-	mov M_EFEKT, #01H
-	LCDcntrlWR #CLEAR
-	MOV A, #'T'
-	LCDcharWR
-	MOV A, #'E'
-	LCDcharWR
-	sjmp czekaj_na_puszczenie
-
-sprawdz_0:
-	; Klawisz '0' (kod 0EBH) -> Resetuj efekty (Tryb normalny)
-	cjne a, #0EBH, sprawdz_hash
-	mov M_EFEKT, #00H
-	LCDcntrlWR #CLEAR
-	MOV A, #'N'
-	LCDcharWR
-	MOV A, #'O'
-	LCDcharWR
-	sjmp czekaj_na_puszczenie
-
-sprawdz_hash:
-	; Klawisz '#' (kod 0EDH) -> Włącz Kwintę
-	cjne a, #0EDH, graj_dzwiek
-	mov M_EFEKT, #02H
-	LCDcntrlWR #CLEAR
-	MOV A, #'K'
-	LCDcharWR
-	MOV A, #'W'
-	LCDcharWR
-	sjmp czekaj_na_puszczenie
-
-czekaj_na_puszczenie:
-	mov a, r0
-	mov P5, a
-	mov a, P7
-	anl a, r0
-	xrl a, r0
-	jnz czekaj_na_puszczenie
-	ljmp graj
-
-; =========================================================================
-; SEKCJA ODTWARZANIA ZASTOSOWANEGO TRYBU
-; =========================================================================
-graj_dzwiek:
-	; Pobierz bazowy czas z XRAM
+	; 1. Pobierz z XRAM bazowe stale czasowe dla nacisnietego klawisza [cite: 40]
 	mov dph, #81h 
 	mov dpl, a 
 	movx a, @dptr 
-	mov M_TH0, a
+	mov M_TH0, a [cite: 40]
 
-	mov a, KOD_SKANU
+	mov a, KOD_SKANU [cite: 40]
 	mov dph, #80h 
 	mov dpl, a 
 	movx a, @dptr 
-	mov M_TL0, a
+	mov M_TL0, a [cite: 40]
 
-	; --- DECYZJA O TRANSPOZYCJI NA BAZIE ZMIENNEJ RAM ---
-	mov a, M_EFEKT
-	cjne a, #01H, test_kwinta
-	; Aplikuj tercję (modyfikacja starszego bajtu)
+	; --- NIEZAWODNY ODCZYT PORTU P3 ---
+	; Wymuszamy wejścia na liniach P3.3, P3.4, P3.5
+	ORL P3, #038H
+	
+	; Pobieramy cały rejestr P3 do akumulatora
+	MOV A, P3
+	
+	; Sprawdzamy P3.3 (Tercja) - jeśli zero, skocz do modyfikacji
+	JB ACC.3, sprawdz_kwinte
+	sjmp aplikuj_transpozycja_tercja
+
+sprawdz_kwinte:
+	; Sprawdzamy P3.4 (Kwinta) - jeśli zero, skocz
+	JB ACC.4, sprawdz_oktawe
+	sjmp aplikuj_transpozycja_kwinta
+
+sprawdz_oktawe:
+	; Sprawdzamy P3.5 (Oktawa) - jeśli zero, skocz
+	JB ACC.5, uruchom_timer
+	sjmp aplikuj_transpozycja_oktawa
+
+aplikuj_transpozycja_tercja:
+	; Mocna, słyszalna zmiana starszego bajtu (wyższy ton)
 	mov a, M_TH0
-	add a, #02H
+	add a, #03H 
 	mov M_TH0, a
 	sjmp uruchom_timer
 
-test_kwinta:
-	cjne a, #02H, uruchom_timer
-	; Aplikuj kwintę
+aplikuj_transpozycja_kwinta:
 	mov a, M_TH0
-	add a, #04H
+	add a, #06H 
+	mov M_TH0, a
+	sjmp uruchom_timer
+
+aplikuj_transpozycja_oktawa:
+	mov a, M_TH0
+	clr c 
+	rrc a 
+	orl a, #80H 
 	mov M_TH0, a
 
 uruchom_timer:
 	mov a, M_TH0
-	mov R6, a 
-	mov TH0, a
+	mov R6, a [cite: 42]
+	mov TH0, a [cite: 42]
 	mov a, M_TL0 
-	mov R7, a 
-	mov TL0, a
+	mov R7, a [cite: 42]
+	mov TL0, a [cite: 42]
 
-	LCDcntrlWR #CLEAR
-	LCDcntrlWR #HOME
-	acall POKAZ_NAZWE_LCD
+	; Wypisanie oznaczenia dzwieku na ekran [cite: 43]
+	LCDcntrlWR #CLEAR [cite: 43]
+	LCDcntrlWR #HOME [cite: 43]
+	acall POKAZ_NAZWE_LCD [cite: 43]
 
-	setb TR0 ; Wlaczenie dzwieku
+	setb TR0 ; Wlaczenie dzwieku [cite: 44]
 
 petla_aktywna:
-	mov a, r0
-	mov P5, a
-	mov a, P7
-	anl a, r0
-	xrl a, r0
-	jnz petla_aktywna ; Graj dopóki styk na klawiaturze jest zwarty
+	mov a, r0 [cite: 45]
+	mov P5, a [cite: 45]
+	mov a, P7 [cite: 45]
+	anl a, r0 [cite: 45]
+	xrl a, r0 [cite: 45]
+	jnz petla_aktywna ; Graj dopóki styk na klawiaturze jest zwarty [cite: 45]
 
-	clr TR0 
-	ljmp graj
+	clr TR0 ; Puszczenie klawisza -> natychmiastowa cisza [cite: 45]
+	ljmp graj [cite: 45]
 
 end start
