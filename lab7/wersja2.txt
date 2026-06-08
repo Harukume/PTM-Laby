@@ -24,18 +24,20 @@ LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
 KOD_SKANU    EQU 30H        ; Zapamietany kod skaningowy (np. 77H, 7BH...)
 M_TH0        EQU 31H        ; Tymczasowy rejestr na starszy bajt licznika
 M_TL0        EQU 32H        ; Tymczasowy rejestr na mlodszy bajt licznika
+M_REJESTR    EQU 33H        ; Pamiec wybranego brzmienia: 0=normalny, 1=tercja, 2=kwinta, 3=oktawa
 
-ORG 000BH     ; obsluga przerwania
+; --- OBSŁUGA PRZERWANIA TIMERA 0 (GENERATOR DŹWIĘKU) ---
+ORG 000BH     
 	CPL P3.2	; ruch membrana brzeczyka
 	PUSH ACC	
-	MOV A, R6	; przeladowanie
-	MOV TH0, A 	; stalej timera
+	MOV A, R6	; przeladowanie stalej timera
+	MOV TH0, A 	
 	MOV A, R7
 	MOV TL0, A
 	POP ACC      	
 	RETI          	
 
-// macro do zapisu sterujacego LCD (z pliku STARTUP.A51)
+// macro do zapisu sterujacego LCD 
 LCDcntrlWR MACRO x          
            LOCAL loop       
 loop: MOV  DPTR,#LCDstatus  
@@ -46,7 +48,7 @@ loop: MOV  DPTR,#LCDstatus
       MOVX @DPTR,A          
       ENDM
 	  
-// macro do zapisu znaku LCD (z pliku STARTUP.A51)
+// macro do zapisu znaku LCD 
 LCDcharWR MACRO
       LOCAL tutu            
       PUSH ACC          
@@ -293,13 +295,33 @@ start:
 	LCDcntrlWR #CLEAR    
 	LCDcntrlWR #LCDON    
 
-	MOV TMOD, #01H ; Timer 0 w tryb 16-bitowy
-	MOV IE, #82H   ; Aktywacja przerwan glosnika
+	MOV TMOD, #01H    ; Timer 0 w tryb 16-bitowy
+	MOV IE, #82H      ; Aktywacja przerwan glosnika (Timer 0)
+	MOV M_REJESTR, #00H ; Domyslnie instrument gra normalnie (0)
 
 graj:		
-	CLR TR0       ; Cisza na starcie
+	CLR TR0          ; Cisza, gdy brak wcisnietego klawisza
 	MOV R4, #00H 
 
+; --- SPRAWDZANIE GUZIKÓW PORTU P3 W STANIE BEZCZYSTNOŚCI ---
+sprawdz_guziki_p3:
+	ORL P3, #038H     ; Wymuszenie stanu wejsciowego na P3.3, P3.4, P3.5
+	MOV A, P3
+	
+	JB ACC.3, dalej_p34
+	MOV M_REJESTR, #01H ; Guzik P3.3 klikniety -> Zmień na stałe na TERCJĘ
+	sjmp graj
+dalej_p34:
+	JB ACC.4, dalej_p35
+	MOV M_REJESTR, #02H ; Guzik P3.4 klikniety -> Zmień na stałe na KWINTĘ
+	sjmp graj
+dalej_p35:
+	JB ACC.5, skanuj_matryce
+	MOV M_REJESTR, #03H ; Guzik P3.5 klikniety -> Zmień na stałe na OKTAWĘ
+	sjmp graj
+
+; --- TRADYCYJNE SKANOWANIE MATRYCY ---
+skanuj_matryce:
 key_1:	
 	mov r0, #LINE_1
 	mov	a, r0 
@@ -349,17 +371,16 @@ key_4:
 	sjmp pobierz_i_graj
 
 brak_bodzca:
-	LCDcntrlWR #CLEAR ; Brak wcisnietego klawisza -> czysty ekran
 	sjmp graj
 
 ; =========================================================================
-; SEKCJA POBIERANIA DANYCH Z XRAM I TRANSPOZYCJI (P3)
+; SEKCJA GENEROWANIA DŹWIĘKU Z ELEKTRONICZNĄ PAMIĘCIĄ REJESTRU
 ; =========================================================================
 pobierz_i_graj:
 	mov a, r2
 	mov KOD_SKANU, a
 
-	; 1. Pobierz z XRAM bazowe stale czasowe dla nacisnietego klawisza
+	; 1. Pobierz z XRAM bazowe, czyste stale czasowe nuty
 	mov dph, #81h 
 	mov dpl, a 
 	movx a, @dptr 
@@ -371,40 +392,27 @@ pobierz_i_graj:
 	movx a, @dptr 
 	mov M_TL0, a
 
-	; --- ODCZYT PORTU P3 ---
-	; Wymuszamy wejścia na liniach P3.3, P3.4, P3.5
-	ORL P3, #038H
-	
-	; Pobieramy cały rejestr P3 do akumulatora
-	MOV A, P3
-	
-	; Sprawdzamy P3.3 (Tercja) - jeśli zero, skocz do modyfikacji
-	JB ACC.3, sprawdz_kwinte
-	sjmp aplikuj_transpozycja_tercja
+	; 2. Zastosuj zapisany na stałe efekt z komórki M_REJESTR
+	mov a, M_REJESTR
+	jz uruchom_timer          ; Jeśli 0, graj czysty dźwięk
 
-sprawdz_kwinte:
-	; Sprawdzamy P3.4 (Kwinta) - jeśli zero, skocz
-	JB ACC.4, sprawdz_oktawe
-	sjmp aplikuj_transpozycja_kwinta
-
-sprawdz_oktawe:
-	; Sprawdzamy P3.5 (Oktawa) - jeśli zero, skocz
-	JB ACC.5, uruchom_timer
-	sjmp aplikuj_transpozycja_oktawa
-
-aplikuj_transpozycja_tercja:
+	cjne a, #01H, sprawdz_ram_kwinte
+	; Stała Tercja (M_REJESTR = 1)
 	mov a, M_TH0
 	add a, #03H 
 	mov M_TH0, a
 	sjmp uruchom_timer
 
-aplikuj_transpozycja_kwinta:
+sprawdz_ram_kwinte:
+	cjne a, #02H, sprawdz_ram_oktawe
+	; Stała Kwinta (M_REJESTR = 2)
 	mov a, M_TH0
 	add a, #06H 
 	mov M_TH0, a
 	sjmp uruchom_timer
 
-aplikuj_transpozycja_oktawa:
+sprawdz_ram_oktawe:
+	; Stała Oktawa (M_REJESTR = 3)
 	mov a, M_TH0
 	clr c 
 	rrc a 
@@ -419,12 +427,12 @@ uruchom_timer:
 	mov R7, a
 	mov TL0, a
 
-	; Wypisanie oznaczenia dzwieku na ekran
+	; Wypisanie nazwy granej nuty bazowej na LCD
 	LCDcntrlWR #CLEAR
 	LCDcntrlWR #HOME
 	acall POKAZ_NAZWE_LCD
 
-	setb TR0 ; Wlaczenie dzwieku
+	setb TR0                  ; Odpalenie brzmienia głośnika
 
 petla_aktywna:
 	mov a, r0
@@ -432,9 +440,9 @@ petla_aktywna:
 	mov a, P7
 	anl a, r0
 	xrl a, r0
-	jnz petla_aktywna ; Graj dopóki styk na klawiaturze jest zwarty
+	jnz petla_aktywna         ; Blokada: graj dopóki trzymasz klawisz muzyczny
 
-	clr TR0 ; Puszczenie klawisza -> natychmiastowa cisza
+	clr TR0                   ; Wyłączenie dźwięku po puszczeniu klawisza
 	ljmp graj
 
 end start
