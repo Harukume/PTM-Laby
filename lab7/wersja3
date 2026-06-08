@@ -1,0 +1,458 @@
+ljmp start
+
+P5 equ 0F8H
+P7 equ 0DBH
+	
+LCDstatus  equ 0FF2EH       ; adres do odczytu gotowosci LCD
+LCDcontrol equ 0FF2CH       ; adres do podania bajtu sterujacego LCD
+LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
+
+// bajty sterujace LCD z Twojego pliku przykladowego
+#define  HOME     0x80     
+#define  INITDISP 0x38     
+#define  HOM2     0xc0     
+#define  LCDON    0x0e     
+#define  CLEAR    0x01     
+
+// linie klawiatury - sterowanie na port P5
+#define LINE_1		0x7f	// 0111 1111
+#define LINE_2		0xbf	// 1011 1111
+#define	LINE_3		0xdf	// 1101 1111
+#define LINE_4		0xef	// 1110 1111
+
+; --- REJESTRY ROBOCZE W RAM ---
+KOD_SKANU    EQU 30H        ; Zapamietany kod skaningowy (np. 77H, 7BH...)
+M_TH0        EQU 31H        ; Tymczasowy rejestr na starszy bajt licznika
+M_TL0        EQU 32H        ; Tymczasowy rejestr na mlodszy bajt licznika
+M_REJESTR    EQU 33H        ; Pamiec wybranego brzmienia: 0=normalny, 1=tercja, 2=kwinta, 3=oktawa
+
+; --- OBSŁUGA PRZERWANIA TIMERA 0 (GENERATOR DŹWIĘKU) ---
+ORG 000BH     
+	CPL P3.2	; ruch membrana brzeczyka
+	PUSH ACC	
+	MOV A, R6	; przeladowanie stalej timera
+	MOV TH0, A 	
+	MOV A, R7
+	MOV TL0, A
+	POP ACC      	
+	RETI          	
+
+// macro do zapisu sterujacego LCD 
+LCDcntrlWR MACRO x          
+           LOCAL loop       
+loop: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,loop       
+      MOV  DPTR,#LCDcontrol 
+      MOV  A, x             
+      MOVX @DPTR,A          
+      ENDM
+	  
+// macro do zapisu znaku LCD 
+LCDcharWR MACRO
+      LOCAL tutu            
+      PUSH ACC          
+tutu: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,tutu       
+      MOV  DPTR,#LCDdataWR  
+      POP  ACC              
+      MOVX @DPTR,A          
+      ENDM
+
+org 0100H
+		
+// =========================================================================
+// TABLICA PRZEKODOWANIA XRAM - KOD SKANOWANIA -> NUTY
+// =========================================================================
+keymuz:		
+			; --- Wartosci TL0 / R7 (Pamiec pod adresem 80xxH) ---
+			mov dptr, #8077H 
+			mov a, #89H 
+			movx @dptr, a     ; Klawisz 1 (C1)
+
+			mov dptr, #807BH 
+			mov a, #0F4H 
+			movx @dptr, a    ; Klawisz 2 (Cis1)
+
+			mov dptr, #807DH 
+			mov a, #5AH 
+			movx @dptr, a     ; Klawisz 3 (D1)
+
+			mov dptr, #807EH 
+			mov a, #0B9H 
+			movx @dptr, a    ; Klawisz A (Dis1)
+
+			mov dptr, #80B7H 
+			mov a, #13H 
+			movx @dptr, a     ; Klawisz 4 (E1)
+
+			mov dptr, #80BBH 
+			mov a, #68H 
+			movx @dptr, a     ; Klawisz 5 (F1)
+
+			mov dptr, #80BDH   
+			mov a, #0B9H 
+			movx @dptr, a    ; Klawisz 6 (Fis1)
+
+			mov dptr, #80BEH 
+			mov a, #04H 
+			movx @dptr, a     ; Klawisz B (G1)
+
+			mov dptr, #80D7H 
+			mov a, #4CH 
+			movx @dptr, a     ; Klawisz 7 (Gis1)
+
+			mov dptr, #80DBH 
+			mov a, #90H 
+			movx @dptr, a     ; Klawisz 8 (A1)
+
+			mov dptr, #80DDH 
+			mov a, #0CFH 
+			movx @dptr, a    ; Klawisz 9 (Ais1)
+
+			mov dptr, #80DEH 
+			mov a, #0CH 
+			movx @dptr, a     ; Klawisz C (H1)
+
+			mov dptr, #80E7H 
+			mov a, #45H 
+			movx @dptr, a     ; Klawisz * (C2)
+
+			mov dptr, #80EBH 
+			mov a, #7AH 
+			movx @dptr, a     ; Klawisz 0 (Cis2)
+
+			mov dptr, #80EDH 
+			mov a, #0ADH 
+			movx @dptr, a    ; Klawisz # (D2)
+
+			mov dptr, #80EEH 
+			mov a, #0DDH 
+			movx @dptr, a    ; Klawisz D (Dis2)
+			
+			; --- Wartosci TH0 / R6 (Pamiec pod adresem 81xxH) ---
+			mov dptr, #8177H 
+			mov a, #0F8H 
+			movx @dptr, a
+
+			mov dptr, #817BH 
+			mov a, #0F8H 
+			movx @dptr, a
+
+			mov dptr, #817DH 
+			mov a, #0F9H 
+			movx @dptr, a
+
+			mov dptr, #817EH 
+			mov a, #0F9H 
+			movx @dptr, a
+
+			mov dptr, #81B7H 
+			mov a, #0FAH 
+			movx @dptr, a
+
+			mov dptr, #81BBH 
+			mov a, #0FAH 
+			movx @dptr, a
+
+			mov dptr, #81BDH 
+			mov a, #0FAH 
+			movx @dptr, a
+
+			mov dptr, #81BEH 
+			mov a, #0FBH 
+			movx @dptr, a
+
+			mov dptr, #81D7H 
+			mov a, #0FBH 
+			movx @dptr, a
+
+			mov dptr, #81DBH 
+			mov a, #0FBH 
+			movx @dptr, a
+
+			mov dptr, #81DDH 
+			mov a, #0FBH 
+			movx @dptr, a
+
+			mov dptr, #81DEH 
+			mov a, #0FCH 
+			movx @dptr, a
+
+			mov dptr, #81E7H 
+			mov a, #0FCH 
+			movx @dptr, a
+
+			mov dptr, #81EBH 
+			mov a, #0FCH 
+			movx @dptr, a
+
+			mov dptr, #81EDH 
+			mov a, #0FCH 
+			movx @dptr, a
+
+			mov dptr, #81EEH 
+			mov a, #0FCH 
+			movx @dptr, a
+			ret
+
+; --- TABLICA TEKSTOWA NAZW NUT ---
+POKAZ_NAZWE_LCD:
+	MOV A, KOD_SKANU
+	CJNE A, #77H, NUT_2 
+	MOV A, #'C' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_2:	
+	CJNE A, #7BH, NUT_3  
+	MOV A, #'C' 
+	LCDcharWR 
+	MOV A, #'#' 
+	LCDcharWR 
+	RET
+NUT_3:	
+	CJNE A, #7DH, NUT_4 
+	MOV A, #'D' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_4:	
+	CJNE A, #7EH, NUT_5  
+	MOV A, #'D' 
+	LCDcharWR 
+	MOV A, #'#' 
+	LCDcharWR 
+	RET
+NUT_5:	
+	CJNE A, #0B7H, NUT_6  
+	MOV A, #'E' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_6:	
+	CJNE A, #0BBH, NUT_7 
+	MOV A, #'F' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_7:	
+	CJNE A, #0BDH, NUT_8  
+	MOV A, #'F' 
+	LCDcharWR 
+	MOV A, #'#' 
+	LCDcharWR 
+	RET
+NUT_8:	
+	CJNE A, #0BEH, NUT_9  
+	MOV A, #'G' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_9:	
+	CJNE A, #0D7H, NUT_10  
+	MOV A, #'G' 
+	LCDcharWR 
+	MOV A, #'#' 
+	LCDcharWR 
+	RET
+NUT_10:	
+	CJNE A, #0DBH, NUT_11 
+	MOV A, #'A' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+NUT_11:	
+	CJNE A, #0DDH, NUT_12  
+	MOV A, #'A' 
+	LCDcharWR 
+	MOV A, #'#' 
+	LCDcharWR 
+	RET
+NUT_12:	
+	CJNE A, #0DEH, KON_M  
+	MOV A, #'H' 
+	LCDcharWR 
+	MOV A, #'1' 
+	LCDcharWR 
+	RET
+KON_M:	
+	RET
+
+; =========================================================================
+; PROGRAM GLÓWNY
+; =========================================================================
+start:  		
+	acall keymuz
+	LCDcntrlWR #INITDISP 
+	LCDcntrlWR #CLEAR    
+	LCDcntrlWR #LCDON    
+
+	MOV TMOD, #01H    ; Timer 0 w tryb 16-bitowy
+	MOV IE, #82H      ; Aktywacja przerwan glosnika (Timer 0)
+	MOV M_REJESTR, #00H ; Domyslnie instrument gra normalnie (0)
+
+graj:		
+	CLR TR0          ; Cisza, gdy brak wcisnietego klawisza
+	MOV R4, #00H 
+
+; --- SPRAWDZANIE GUZIKÓW PORTU P3 W STANIE BEZCZYSTNOŚCI ---
+sprawdz_guziki_p3:
+	ORL P3, #0F8H     ; Wymuszenie stanu wejsciowego na P3.3, P3.4, P3.5 i P3.7
+	MOV A, P3
+	
+	JB ACC.3, dalej_p34
+	MOV M_REJESTR, #01H ; Guzik P3.3 klikniety -> Zmień na stałe na TERCJĘ
+	sjmp graj
+dalej_p34:
+	JB ACC.4, dalej_p35
+	MOV M_REJESTR, #02H ; Guzik P3.4 klikniety -> Zmień na stałe na KWINTĘ
+	sjmp graj
+dalej_p35:
+	JB ACC.5, dalej_p37
+	MOV M_REJESTR, #03H ; Guzik P3.5 klikniety -> Zmień na stałe na OKTAWĘ
+	sjmp graj
+dalej_p37:
+	JB ACC.7, skanuj_matryce
+	MOV M_REJESTR, #00H ; Guzik P3.7 klikniety -> Reset brzmienia (Tryb normalny)
+	sjmp graj
+
+; --- TRADYCYJNE SKANOWANIE MATRYCY ---
+skanuj_matryce:
+key_1:	
+	mov r0, #LINE_1
+	mov	a, r0 
+	mov	P5, a 
+	mov a, P7 
+	anl a, r0
+	mov r2, a 
+	clr c 
+	subb a, r0
+	jz key_2
+	sjmp pobierz_i_graj
+
+key_2:	
+	mov r0, #LINE_2
+	mov	a, r0 
+	mov	P5, a 
+	mov a, P7 
+	anl a, r0
+	mov r2, a 
+	clr c 
+	subb a, r0
+	jz key_3
+	sjmp pobierz_i_graj
+
+key_3:	
+	mov r0, #LINE_3
+	mov	a, r0 
+	mov	P5, a 
+	mov a, P7 
+	anl a, r0
+	mov r2, a 
+	clr c 
+	subb a, r0
+	jz key_4
+	sjmp pobierz_i_graj
+
+key_4:	
+	mov r0, #LINE_4
+	mov	a, r0 
+	mov	P5, a 
+	mov a, P7 
+	anl a, r0
+	mov r2, a 
+	clr c 
+	subb a, r0
+	jz brak_bodzca
+	sjmp pobierz_i_graj
+
+brak_bodzca:
+	sjmp graj
+
+; =========================================================================
+; SEKCJA GENEROWANIA DŹWIĘKU Z ELEKTRONICZNĄ PAMIĘCIĄ REJESTRU
+; =========================================================================
+pobierz_i_graj:
+	mov a, r2
+	mov KOD_SKANU, a
+
+	; 1. Pobierz z XRAM bazowe, czyste stale czasowe nuty
+	mov dph, #81h 
+	mov dpl, a 
+	movx a, @dptr 
+	mov M_TH0, a
+
+	mov a, KOD_SKANU
+	mov dph, #80h 
+	mov dpl, a 
+	movx a, @dptr 
+	mov M_TL0, a
+
+	; 2. Zastosuj zapisany na stałe efekt z komórki M_REJESTR
+	mov a, M_REJESTR
+	jz uruchom_timer          ; Jeśli 0, graj czysty dźwięk
+
+	cjne a, #01H, sprawdz_ram_kwinte
+	; Bezpieczna Tercja (M_REJESTR = 1)
+	mov a, M_TH0
+	add a, #03H 
+	jnc zapisz_tercje         ; Jeśli brak przeniesienia, zapisz wynik
+	mov a, #0FFH              ; Jeśli przekroczono FFH, ustaw maksymalny sufit
+zapisz_tercje:
+	mov M_TH0, a
+	sjmp uruchom_timer
+
+sprawdz_ram_kwinte:
+	cjne a, #02H, sprawdz_ram_oktawe
+	; Bezpieczna Kwinta (M_REJESTR = 2)
+	mov a, M_TH0
+	add a, #06H 
+	jnc zapisz_kwinte         ; Jeśli brak przeniesienia, zapisz wynik
+	mov a, #0FFH              ; Jeśli przekroczono FFH, ustaw maksymalny sufit
+zapisz_kwinte:
+	mov M_TH0, a
+	sjmp uruchom_timer
+
+sprawdz_ram_oktawe:
+	; Stała Oktawa (M_REJESTR = 3)
+	mov a, M_TH0
+	clr c 
+	rrc a 
+	orl a, #80H 
+	mov M_TH0, a
+
+uruchom_timer:
+	mov a, M_TH0
+	mov R6, a
+	mov TH0, a
+	mov a, M_TL0 
+	mov R7, a
+	mov TL0, a
+
+	; Wypisanie nazwy granej nuty bazowej na LCD
+	LCDcntrlWR #CLEAR
+	LCDcntrlWR #HOME
+	acall POKAZ_NAZWE_LCD
+
+	setb TR0                  ; Odpalenie brzmienia głośnika
+
+petla_aktywna:
+	mov a, r0
+	mov P5, a
+	mov a, P7
+	anl a, r0
+	xrl a, r0
+	jnz petla_aktywna         ; Blokada: graj dopóki trzymasz klawisz muzyczny
+
+	clr TR0                   ; Wyłączenie dźwięku po puszczeniu klawisza
+	ljmp graj
+
+end start
