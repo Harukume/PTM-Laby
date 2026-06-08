@@ -7,12 +7,12 @@ LCDstatus  equ 0FF2EH       ; adres do odczytu gotowosci LCD
 LCDcontrol equ 0FF2CH       ; adres do podania bajtu sterujacego LCD
 LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
 
-// bajty sterujace LCD, inne dostepne w opisie LCD na stronie WWW
-#define  HOME     0x80     // put cursor to second line  
-#define  INITDISP 0x38     // LCD init (8-bit mode)  
-#define  HOM2     0xc0     // put cursor to second line  
-#define  LCDON    0x0e     // LCD nn, cursor off, blinking off
-#define  CLEAR    0x01     // LCD display clear
+// bajty sterujace LCD
+#define  HOME     0x80     
+#define  INITDISP 0x38     
+#define  HOM2     0xc0     
+#define  LCDON    0x0e     
+#define  CLEAR    0x01     
 
 // linie klawiatury - sterowanie na port P5
 #define LINE_1		0x7f	// 0111 1111
@@ -21,45 +21,54 @@ LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
 #define LINE_4		0xef	// 1110 1111
 #define ALL_LINES	0x0f	// 0000 1111
 
+; --- REJESTRY PAMIĘCI RAM DO BUDOWANIA LICZBY ---
+LIMIT_WPR   EQU 30H   ; Przechowuje aktualny limit (24 dla godzin, 60 dla minut)
+BUFOR_CYFR  EQU 31H   ; Tu budujemy liczbę dwucyfrową
+KOD_KLAWISZA EQU 32H  ; Przechowalnia tymczasowa zdekodowanego klawisza
+
 ORG 000BH     				; obsluga przerwania
 	MOV TH0, #3CH 			; przeladowanie
 	MOV TL0, #0B0H 			; stalej timera na 50ms
 	DEC R0        			; korekta licznika
-	RETI          			; powrót z przerwania
+	RETI          			; powrot z przerwania
 
 org 0100H
 		
 // macro do wprowadzenia bajtu sterujacego na LCD
-LCDcntrlWR MACRO x          ; x – parametr wywolania macra – bajt sterujacy
-           LOCAL loop       ; LOCAL oznacza ze etykieta loop moze sie powtórzyc w programie
-loop: MOV  DPTR,#LCDstatus  ; DPTR zaladowany adresem statusu
-      MOVX A,@DPTR          ; pobranie bajtu z biezacym statusem LCD
-      JB   ACC.7,loop       ; testowanie najstarszego bitu akumulatora
-                            ; – wskazuje gotowosc LCD
-      MOV  DPTR,#LCDcontrol ; DPTR zaladowany adresem do podania bajtu sterujacego
-      MOV  A, x             ; do akumulatora trafia argument wywolania macra–bajt sterujacy
-      MOVX @DPTR,A          ; bajt sterujacy podany do LCD – zadana akcja widoczna na LCD
+LCDcntrlWR MACRO x          
+           LOCAL loop       
+loop: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,loop       
+      MOV  DPTR,#LCDcontrol 
+      MOV  A, x             
+      MOVX @DPTR,A          
       ENDM
 	  
-// macro do wypisania znaku ASCII na LCD, znak ASCII przed wywolaniem macra ma byc w A
+// macro do wypisania znaku ASCII na LCD
 LCDcharWR MACRO
-      LOCAL tutu            ; LOCAL oznacza ze etykieta tutu moze sie powtórzyc w programie
-      PUSH ACC              ; odlozenie biezacej zawartosci akumulatora na stos
-tutu: MOV  DPTR,#LCDstatus  ; DPTR zaladowany adresem statusu
-      MOVX A,@DPTR          ; pobranie bajtu z biezacym statusem LCD
-      JB   ACC.7,tutu       ; testowanie najstarszego bitu akumulatora
-                            ; – wskazuje gotowosc LCD
-      MOV  DPTR,#LCDdataWR  ; DPTR zaladowany adresem do podania bajtu sterujacego
-      POP  ACC              ; w akumulatorze ponownie kod ASCII znaku na LCD
-      MOVX @DPTR,A          ; kod ASCII podany do LCD – znak widoczny na LCD
+      LOCAL tutu            
+      PUSH ACC              
+tutu: MOV  DPTR,#LCDstatus  
+      MOVX A,@DPTR          
+      JB   ACC.7,tutu       
+      MOV  DPTR,#LCDdataWR  
+      POP  ACC              
+      MOVX @DPTR,A          
       ENDM
 	  
-// macro do inicjalizacji wyswietlacza – bez parametrów
+// macro do inicjalizacji wyswietlacza
 init_LCD MACRO
-         LCDcntrlWR #INITDISP ; wywolanie macra LCDcntrlWR – inicjalizacja LCD
-         LCDcntrlWR #CLEAR    ; wywolanie macra LCDcntrlWR – czyszczenie LCD
-         LCDcntrlWR #LCDON    ; wywolanie macra LCDcntrlWR – konfiguracja kursora
+         LCDcntrlWR #INITDISP 
+         LCDcntrlWR #CLEAR    
+         LCDcntrlWR #LCDON    
          ENDM
+
+delay:	mov r1, #0FFH
+dwa:	mov r2, #0FFH
+trzy:	djnz r2, trzy
+		djnz r1, dwa
+		ret
 		 
 // funkcja wypisania liczby dla potrzeb zegara
 putdigitLCD:	mov b, #10
@@ -71,311 +80,300 @@ putdigitLCD:	mov b, #10
 				acall putcharLCD
 				ret
 
-// funkcaj wypisywania znaku na LCD
+// funkcja wypisywania znaku na LCD
 putcharLCD:	LCDcharWR
 			ret
 
+// tablica przekodowania klawisze - ASCII w XRAM
+keyascii_num:	mov dptr, #80EBH
+			mov a, #0
+			movx @dptr, a
+			
+			mov dptr, #8077H
+			mov a, #1
+			movx @dptr, a
+			
+			mov dptr, #807BH
+			mov a, #2
+			movx @dptr, a
+			
+			mov dptr, #807DH
+			mov a, #3
+			movx @dptr, a
+			
+			mov dptr, #80B7H
+			mov a, #4
+			movx @dptr, a
+			
+			mov dptr, #80BBH
+			mov a, #5
+			movx @dptr, a
+			
+			mov dptr, #80BDH
+			mov a, #6
+			movx @dptr, a
+			
+			mov dptr, #80D7H
+			mov a, #7
+			movx @dptr, a
+			
+			mov dptr, #80DBH
+			mov a, #8
+			movx @dptr, a
+			
+			mov dptr, #80DDH
+			mov a, #9
+			movx @dptr, a
+			
+			mov dptr, #807EH
+			mov a, #"A"
+			movx @dptr, a
+			
+			mov dptr, #80BEH
+			mov a, #"B"
+			movx @dptr, a
+			
+			mov dptr, #80DEH
+			mov a, #"C"
+			movx @dptr, a
+			
+			mov dptr, #80EEH
+			mov a, #"D"
+			movx @dptr, a
+			
+			mov dptr, #80E7H
+			mov a, #"*"
+			movx @dptr, a
+			
+			mov dptr, #80EDH
+			mov a, #"#"
+			movx @dptr, a
+			ret
 
-; wyswietlanie
+// odswiezanie i wyswietlanie aktualnego czasu na LCD
 POKAZ_ZEGAR:
-	LCDcntrlWR #HOME	; ustawienie kursora
-	MOV A,R5		; godziny
-	ACALL putdigitLCD
-	MOV A,#":"		; separator
-	ACALL putcharLCD
-	MOV A,R6		; minuty
-	ACALL putdigitLCD
-	MOV A,#":"		; separator
-	ACALL putcharLCD
-	MOV A,R7		; sekundy
-	ACALL putdigitLCD
-	RET
+			LCDcntrlWR #HOME	
+			MOV A, R5			; godziny
+			ACALL putdigitLCD
+			MOV A, #":"			
+			ACALL putcharLCD
+			MOV A, R6			; minuty
+			ACALL putdigitLCD
+			MOV A, #":"			
+			ACALL putcharLCD
+			MOV A, R7			; sekundy
+			ACALL putdigitLCD
+			RET
 
-; aktualizacja zegara
-
-ZEGAR:
-	INC R7		; licznik sekund
-	MOV A,R7
-	CLR C
-	SUBB A,#60	; przepelnienie sekund
-	JZ MINUTY
-
-	ACALL POKAZ_ZEGAR
-	RET
-
-MINUTY:
-	MOV R7,#00H	; zerowanie sekund
-	INC R6		; licznik minut
-
-	MOV A,R6
-	CLR C
-	SUBB A,#60	; przepelnienie minut
-	JZ GODZINY
-	ACALL POKAZ_ZEGAR
-	RET
-
-GODZINY:
-	MOV R6,#00H	; zerowanie minut
-	INC R5		; licznik godzin
-
-	MOV A,R5
-	CLR C
-	SUBB A,#24	; przepelnienie godzin
-	JNZ EKRAN
-
-	MOV R5,#00H	; nowa doba
-
-EKRAN:
-
-	ACALL POKAZ_ZEGAR
-	RET
-
-; dodawanie godziny
-
-GODZINA_PLUS:
-	INC R5		; zwiekszenie godzin
-
-	MOV A,R5
-	CLR C
-	SUBB A,#24	; sprawdzenie przepelnienia
-	JNZ PLUS_OK
-	MOV R5,#00H	; powrot do 00
-PLUS_OK:
-	ACALL POKAZ_ZEGAR
-	RET
-
-; odjecie godziny
-
-GODZINA_MINUS:
-	MOV A,R5
-	JNZ MINUS_NORMAL
-
-	MOV R5,#23	; przejscie z 00 na 23
-	SJMP MINUS_END
-
-MINUS_NORMAL:
-	DEC R5		; zmniejszenie godzin
-
-MINUS_END:
-	ACALL POKAZ_ZEGAR
-	RET
-
+// wyznaczanie biezacej wartosci zegara
+ZEGAR:		INC R7				; licznik sekund
+			MOV A, R7			; obsluga sekund
+			CLR C
+			SUBB A, #60			; przepelnienie sekund
+			JZ MINUTY
+			ACALL POKAZ_ZEGAR
+			JMP FINAL
+MINUTY:		MOV R7, #00H		; zerowanie sekund
+			INC R6				; licznik minut
+			MOV A, R6			; obsluga minut
+			CLR C
+			SUBB A, #60			; przepelnienie minut
+			JZ GODZINY
+			ACALL POKAZ_ZEGAR
+			JMP FINAL
+GODZINY:	MOV R6, #00H		; zerowanie minut
+			INC R5				; licznik godzin
+			MOV A, R5
+			CLR C
+			SUBB A, #24			; przepelenienie godzin - doba
+			JNZ EKRAN
+			MOV R5, #00H		; zerowanie godzin
+EKRAN:		ACALL POKAZ_ZEGAR
+FINAL:		RET
 
 ; =========================================================================
-; NOWE ELEMENTY: OBSLUGA KLAWIATURY I USTAWIANIA ZEGARA 
+; PODPROGRAMY AMORTYZACJI STYKÓW I ODCZYTU POJEDYNCZEGO KLIKNIĘCIA
 ; =========================================================================
 
-CZYTAJ_KLAWISZ:
-	; Skandowanie linii 1
-	MOV P5,#LINE_1
-	MOV A,P7
-	ANL A,#0FH
-	XRL A,#0FH
-	JNZ KLAW_OK
-	; Skandowanie linii 2
-	MOV P5,#LINE_2
-	MOV A,P7
-	ANL A,#0FH
-	XRL A,#0FH
-	JNZ KLAW_OK
-	; Skandowanie linii 3
-	MOV P5,#LINE_3
-	MOV A,P7
-	ANL A,#0FH
-	XRL A,#0FH
-	JNZ KLAW_OK
-	; Skandowanie linii 4
-	MOV P5,#LINE_4
-	MOV A,P7
-	ANL A,#0FH
-	XRL A,#0FH
-	JNZ KLAW_OK
-	
-	MOV A,#0FFH			; Brak wcisnietego klawisza
-	RET
+CZYTAJ_MATRYCE:
+		key_1:	mov r1, #LINE_1
+				mov	a, r1
+				mov	P5, a
+				mov a, P7
+				anl a, #0Fh		; ZD537 czyta dolną połówkę z P7
+				cjne a, #0Fh, dekoduj
+		key_2:	mov r1, #LINE_2
+				mov	a, r1
+				mov	P5, a
+				mov a, P7
+				anl a, #0Fh
+				cjne a, #0Fh, dekoduj
+		key_3:	mov r1, #LINE_3
+				mov	a, r1
+				mov	P5, a
+				mov a, P7
+				anl a, #0Fh
+				cjne a, #0Fh, dekoduj
+		key_4:	mov r1, #LINE_4
+				mov	a, r1
+				mov	P5, a
+				mov a, P7
+				anl a, #0Fh
+				cjne a, #0Fh, dekoduj
+				
+				mov a, #0FFH	; brak wciśniętego klawisza
+				ret
 
-KLAW_OK:
-	MOV R1,P7			; Zapamietaj stan portu kolumn
-	MOV A,P5			; Zapamietaj stan portu linii
-	ANL A,#0F0H
-	MOV R3, A      ; tymczasowo zapisz zamaskowany port P5 w R3
-	MOV A, R1      ; zaladuj stan P7 do akumulatora
-	ANL A, #0FH    ; teraz bezpiecznie maskujemy w A
-	ORL A, R3      ; scalenie obu wartosci
-	MOV R1, A      ; ostateczny kod laduje w R1
+dekoduj:		mov r2, a		; zapas kolumn
+				mov a, r1		; linia aktywująca
+				anl a, #0F0H
+				orl a, r2		; budujemy pełny adres dla XRAM
+				mov dph, #80h
+				mov dpl, a
+				movx a, @dptr	; pobranie znaku z tabeli przekodowania (0-9, *, #, A-D)
+				ret
 
-	; Dekodowanie pozycji przy uzyciu tabeli mapowania
-	MOV DPTR,#TAB_KLAWISZ
-	MOV R2,#0
-SZUKAJ_KODU:
-	MOV A,R2
-	MOVC A,@A+DPTR
-	XRL A,R1
-	JZ ZNALEZIONO
-	INC R2
-	CJNE R2,#12,SZUKAJ_KODU
-	MOV A,#0FFH
-	RET
-ZNALEZIONO:
-	MOV A,R2			; A zwraca pozycje z tabeli (0-9 = cyfry, 10 = *, 11 = #)
-	RET
+POBIERZ_KLIK:
+				acall CZYTAJ_MATRYCE
+				cjne a, #0FFH, klawisz_jest
+				sjmp POBIERZ_KLIK	; czekamy aż użytkownik coś naciśnie
+klawisz_jest:	mov KOD_KLAWISZA, a ; zapisujemy co wcisnął
 
-CZEKAJ_NA_KLAWISZ:
-	ACALL CZYTAJ_KLAWISZ
-	XRL A,#0FFH
-	JZ CZEKAJ_NA_KLAWISZ
-	
-	; Drgania styków i czekanie na puszczenie
-	MOV R2,A
-CZEKAJ_PUSZCZENIE:
-	ACALL CZYTAJ_KLAWISZ
-	XRL A,#0FFH
-	JNZ CZEKAJ_PUSZCZENIE
-	MOV A,R2
-	RET
+puszczenie:		mov P5, #00H		; odcinamy linie
+				mov a, P7
+				anl a, #0Fh
+				cjne a, #0Fh, puszczenie ; pętla czeka, aż fizycznie puścisz klawisz
+				
+				acall delay			; programowe usuwanie drgań zestyków
+				mov a, KOD_KLAWISZA
+				ret
 
-; Uniwersalna petla wprowadzania liczby dwucyfrowej
-; Dane wejsciowe: R3 = wartosc limitu (24 dla godzin, 60 dla minut)
+; =========================================================================
+; UNIWERSALNA PROCEDURA BUDOWANIA LICZBY DWUCYFROWEJ Z KONTROLĄ
+; =========================================================================
 WPROWADZ_WARTOSC:
-	MOV R4,#0			; Rejestr budowanej liczby (wynik)
-	CLR F0				; F0=0 oznacza wprowadzanie pierwszej cyfry (dziesiatek)
-CZEKAJ_CYFRA:
-	ACALL CZEKAJ_NA_KLAWISZ
-	CJNE A,#11,SPRAWDZ_CZY_CYFRA ; Jesli nie '#', to sprawdz cyfre
-	
-	; Wcisnieto '#' -> Konczymy i zatwierdzamy aktualna wartosc w R4
-	MOV A,R4
-	RET
+				MOV BUFOR_CYFR, #0	; zerujemy bufor na start
+				CLR F0				; F0=0 -> oczekujemy na pierwszą cyfrę (dziesiątek)
+czekaj_na_cyfre:
+				acall POBIERZ_KLIK
+				cjne a, #"#", sprawdz_czy_cyfra
+				
+				; Naciśnięto '#' -> Kończymy wprowadzanie, aktualny stan bufora to nasz wynik
+				mov a, BUFOR_CYFR
+				ret
 
-SPRAWDZ_CZY_CYFRA:
-	CLR C
-	SUBB A,#10
-	JNC CZEKAJ_CYFRA	; Jesli wcisnieto '*' (10) lub cos blednego -> ignoruj
-	
-	; Dodanie cyfry do liczby
-	MOV R1,A			; R1 = nowa cyfra
-	JB F0,DODAJ_JEDNOSC
-	
-	; Pierwsza cyfra (dziesiatki)
-	MOV A,R1
-	MOV B,#10
-	MUL AB
-	MOV R4,A
-	SETB F0				; Przelacz na druga cyfre
-	SJMP AKTUALIZUJ_WIDOK
+sprawdz_czy_cyfra:
+				; Sprawdzamy czy to znak ASCII z przedziału '0'-'9' (czyli 0x00 do 0x09 w Twojej tabeli)
+				clr c
+				subb a, #10
+				jnc czekaj_na_cyfre ; jeśli naciśnięto klawisze funkcyjne (*, A, B...) -> ignoruj
 
-DODAJ_JEDNOSC:
-	; Druga cyfra (jednosci)
-	MOV A,R4
-	ADD A,R1
-	
-	; Kontrola zakresu (Czy nowa liczba < R3?)
-	MOV R2,A			; Zachowaj do testu
-	CLR C
-	SUBB A,R3
-	JNC BLAD_ZAKRESU	; Jesli >= limitu, zglos blad i skasuj bufor
-	
-	MOV A,R2       ; 
-	MOV R4,A		; Liczba poprawna, zapisz ja
-	CLR F0				; Zresetuj flage, pozwól pisac od nowa jesli uzytkownik chce nadpisac
-	SJMP AKTUALIZUJ_WIDOK
+				jb F0, wpisz_jedn
+				
+				; KROK 1: Pierwsza cyfra (Dziesiątki)
+				mov a, KOD_KLAWISZA
+				mov b, #10
+				mul ab				; np. wpisano 1 -> 1 * 10 = 10
+				mov BUFOR_CYFR, a
+				setb F0				; flaga na 1 -> następna cyfra wpadnie do jedności
+				sjmp odswiez_konfiguracje
 
-BLAD_ZAKRESU:
-	MOV R4,#0			; Reset wartosci
-	CLR F0				; Reset pozycji
+wpisz_jedn:
+				; KROK 2: Druga cyfra (Jedności)
+				mov a, BUFOR_CYFR
+				add a, KOD_KLAWISZA ; dodajemy cyfrę jedności do dziesiątek
+				
+				; Kontrola zakresu (czy zbudowana liczba < LIMIT_WPR?)
+				mov r2, a			; zapas
+				clr c
+				subb a, LIMIT_WPR
+				jnc blad_limitu		; jeśli wynik >= limitu -> błąd!
+				
+				mov a, r2
+				mov BUFOR_CYFR, a	; wartość poprawna, zapisz
+				clr F0				; reset flagi (można poprawiać liczbę na nowo, dopóki nie kliknie się #)
+				sjmp odswiez_konfiguracje
 
-AKTUALIZUJ_WIDOK:
-	; W zaleznosci od tego co aktualnie ustawiamy, uaktualniamy podglad na LCD
-	MOV A,R3
-	CJNE A,#24,UST_MINUTY
-	MOV A,R4       ; zamiast MOV R4,R2 -> przechodzimy przez A
-	MOV R5,A		; Aktualizacja godzin w locie
-	SJMP RYSUJ
-UST_MINUTY:
-	MOV A,R4       ; zamiast MOV R4,R2 -> przechodzimy przez A
-	MOV R6,A	; Aktualizacja minut w locie
-RYSUJ:
-	ACALL POKAZ_ZEGAR
-	SJMP CZEKAJ_CYFRA
+blad_limitu:
+				mov BUFOR_CYFR, #0	; czyszczenie przy błędzie zakresu
+				clr F0
+
+odswiez_konfiguracje:
+				; Podgląd wpisywanej wartości w czasie rzeczywistym na ekranie
+				mov a, LIMIT_WPR
+				cjne a, #24, podglad_minut
+				mov a, BUFOR_CYFR
+				mov r5, a			; chwilowo podmieniamy godziny w R5
+				sjmp rysuj_ekran
+podglad_minut:
+				mov a, BUFOR_CYFR
+				mov r6, a			; chwilowo podmieniamy minuty w R6
+rysuj_ekran:
+				acall POKAZ_ZEGAR
+				ljmp czekaj_na_cyfre
+
 ; =========================================================================
-; GLÓWNY PROGRAM
+; GŁÓWNY PROGRAM
 ; =========================================================================
 
-START:
-	init_LCD
-	
-	; Domyslny start wyswietlacza od zer
-	MOV R5,#00H	; 
-	MOV R6,#00H	; 
-	MOV R7,#00H	; 
-	ACALL POKAZ_ZEGAR
+START:	init_LCD
+		acall keyascii_num
+		
+		; Inicjalizacja ekranu startowego (czyste zera)
+		MOV R5, #00H			
+		MOV R6, #00H
+		MOV R7, #00H
+		ACALL POKAZ_ZEGAR		
 
-	; --- SEKCJA USTAWIANIA CZASU PRZED STARTEM ---
-	; 1. Wprowadzanie Godzin (limit 24)
-	MOV R3,#24
-	ACALL WPROWADZ_WARTOSC
-	MOV R5,A			; Ostateczny zapis zatwierdzonych godzin
-	
-	; 2. Wprowadzanie Minut (limit 60)
-	MOV R3,#60
-	ACALL WPROWADZ_WARTOSC
-	MOV R6,A			; Ostateczny zapis zatwierdzonych minut
+		; --- ETAP USTAWIANIA GODZIN (Limit: 24) ---
+		MOV LIMIT_WPR, #24
+		ACALL WPROWADZ_WARTOSC
+		MOV R5, A				; ostatecznie zatwierdzona liczba trafia do R5
 
-	MOV TMOD,#01H 		; 
-	MOV TH0,#3CH 		; 
-	MOV TL0,#0B0H 		; 
-	SETB TR0      		; 
-	MOV IE,#82H  		; 
-	
-	MOV R4,#01H			; Zegar domyslnie startuje po konfiguracji
-	MOV R0,#20 			; 
+		; --- ETAP USTAWIANIA MINUT (Limit: 60) ---
+		MOV LIMIT_WPR, #60
+		ACALL WPROWADZ_WARTOSC
+		MOV R6, A				; ostatecznie zatwierdzona liczba trafia do R6
 
-	ACALL POKAZ_ZEGAR
+		; --- URUCHOMIENIE SPRZĘTOWEGO ODMIERZANIA CZASU (Dopiero po ustawieniu!) ---
+		MOV TMOD, #01H 			; konfiguracja timera
+		MOV TH0, #3CH 			; ladowanie
+		MOV TL0, #0B0H 			; stalej timera na 50ms
+		SETB TR0	 			; timer start
+		MOV IE, #82H  			; przerwania wlacz
+		MOV R7, #00H			; start od 00 sekund
+		MOV R0, #20 			; licznik odmierzen 20 x 50ms = 1 sekunda
+		
+		MOV A, #0FH
+		MOV P1, A 				; zapalenie diod
+		ACALL POKAZ_ZEGAR
 
-; petla glowna i guziki
-
-MAIN:
-	JB P3.2,STOP_BTN
-	MOV R4,#01H		; uruchomienie zegara
-
-WAIT4:
-	JNB P3.2, WAIT4		; oczekiwanie na puszczenie przycisku
-	
-STOP_BTN:
-	JB P3.3,PLUS_BTN
-	MOV R4,#00H		; zatrzymanie zegara
-WAIT3:
-	JNB P3.3,WAIT3		; oczekiwanie na puszczenie przycisku
-PLUS_BTN:
-	JB P3.4,MINUS_BTN
-	ACALL GODZINA_PLUS
-WAIT1:
-	JNB P3.4,WAIT1		; oczekiwanie na puszczenie przycisku
-MINUS_BTN:
-	JB P3.5,LICZNIK
-	ACALL GODZINA_MINUS
-WAIT2:
-	JNB P3.5,WAIT2		; oczekiwanie na puszczenie przycisku
-
-; odmierzanie
-LICZNIK:
-	MOV A,R4		; sprawdzenie flagi pracy
-	JZ MAIN			; jezeli stop - powrot
-
-	MOV A,R0   		; czekam, a timer mierzy laczny czas 1s
-	JNZ MAIN   		; 
-
-	MOV R0,#20		; ustawienie nowego odmierzenia
-	ACALL ZEGAR		; aktualizacja zegara
-	JMP MAIN		; powrot do petli glownej
-
-	NOP
-	NOP
-	NOP
-
-	JMP $
-
-	TAB_KLAWISZ: 
-	DB 077h, 07Bh, 07Dh, 0B7h, 0BBh, 0BDh, 0D7h, 0DBh, 0DDh, 0E7h, 0EBh, 0EDh
+CZEKAM: 		
+		; Stałe i nieblokujące monitorowanie wejść klawiatury podczas pracy zegara
+		; Klawisze A (START), B (STOP), C (RESET) zgodnie z Twoją logiką
+		acall CZYTAJ_MATRYCE
+		cjne a, #"A", sprawdz_B
+		SETB TR0				; wznowienie odliczania
+		sjmp skip_klaw
+sprawdz_B:
+		cjne a, #"B", sprawdz_C
+		clr TR0					; zatrzymanie odliczania
+		sjmp skip_klaw
+sprawdz_C:
+		cjne a, #"C", skip_klaw
+		ljmp START				; całkowity restart i powrót do konfiguracji
+		
+skip_klaw:
+		MOV A, R0    			; sprawdzenie licznika sekund programowych
+		JNZ CZEKAM    			
+		
+		MOV R0, #20				; przeładowanie bazy 1 sekundy
+		ACALL ZEGAR				; aktualizacja czasu
+		
+		MOV A, P1 				; mruganie diodami kontrolnymi
+		CPL A       			
+		MOV P1, A
+		
+		JMP CZEKAM    			
 
 END START
