@@ -436,6 +436,21 @@ aplikuj_transpozycja_oktawa:
 	orl a, #80H 
 	mov M_TH0, a
 
+uruchom_timer:
+	mov a, M_TH0
+	mov R6, a 
+	mov TH0, a
+	mov a, M_TL0 
+	mov R7, a 
+	mov TL0, a
+
+	; 3. Wypisanie oznaczenia dzwieku na ekran (Zadanie 2)
+	LCDcntrlWR #CLEAR
+	LCDcntrlWR #HOME
+	acall POKAZ_NAZWE_LCD
+
+	setb TR0 ; Wlaczenie dzwieku
+
 petla_aktywna:
 	mov a, r0
 	mov P5, a
