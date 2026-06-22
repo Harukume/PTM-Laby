@@ -1,0 +1,454 @@
+ljmp start
+	
+LCDstatus  equ 0FF2EH       ; adres do odczytu gotowosci LCD
+LCDcontrol equ 0FF2CH       ; adres do podania bajtu sterujacego LCD
+LCDdataWR  equ 0FF2DH       ; adres do podania kodu ASCII na LCD
+
+; --- REJESTRY STRUKTURALNE RTC (MAPOWANE W XRAM) ---
+RTCxs equ 0FF00H    ; seconds
+RTCsx equ 0FF01H    ;
+RTCxm equ 0FF02H    ; minutes
+RTCmx equ 0FF03H    ;
+RTCxh equ 0FF04H    ; hours
+RTChx equ 0FF05H    ;
+RTCdx equ 0FF06H    ; day
+RTCxd equ 0FF07H
+RTCnx equ 0FF08H    ; month
+RTCxn equ 0FF09H
+RTCxy equ 0FF0AH    ; year
+RTCyx equ 0FF0BH
+RTCdw equ 0FF0CH    ; day of week
+RTCpf equ 0FF0FH    ;
+
+; --- ZMIENNE TYMCZASOWE W WEWNETRZNEJ PAMIECI RAM ---
+VAL_HOUR EQU 30H       ; Przeliczona wartosc godzin
+VAL_MIN  EQU 31H       ; Przeliczona wartosc minut
+VAL_SEC  EQU 32H       ; Przeliczona wartosc sekund
+VAL_DAY  EQU 33H       ; Przeliczona wartosc dni
+VAL_MON  EQU 34H       ; Przeliczona wartosc miesiecy
+MAX_DAYS EQU 35H       ; Maksymalna dozwolona liczba dni w danym miesiacu
+
+// bajty sterujace LCD, inne dostepne w opisie LCD na stronie WWW
+#define  HOME     0x80     // put cursor to second line  
+#define  INITDISP 0x38     // LCD init (8-bit mode)  
+#define  HOM2     0xc0     // put cursor to second line  
+#define  LCDON    0x0e     // LCD nn, cursor off, blinking off
+#define  CLEAR    0x01     // LCD display clear
+
+org 0100H
+	Czas: db "13:40:00"
+	Dzien: db "30:05:2022*1"
+	Month: db "JanFebMarAprMayJunJulAugSepOctNovDec"
+	Week: db "SunMonTueWedThuFriSat"
+	TwentyH: db "2"
+	TwentyL: db "0"
+		
+// macro do wprowadzenia bajtu sterujacego na LCD
+LCDcntrlWR MACRO x          ; x – parametr wywolania macra – bajt sterujacy
+           LOCAL loop       ; LOCAL oznacza ze etykieta loop moze sie powtórzyc w programie
+loop: MOV  DPTR,#LCDstatus  ; DPTR zaladowany adresem statusu
+      MOVX A,@DPTR          ; pobranie bajtu z biezacym statusem LCD
+      JB   ACC.7,loop       ; testowanie najstarszego bitu akumulatora
+                            ; – wskazuje gotowosc LCD
+      MOV  DPTR,#LCDcontrol ; DPTR zaladowany adresem do podania bajtu sterujacego
+      MOV  A, x             ; do akumulatora trafia argument wywolania macra–bajt sterujacy
+      MOVX @DPTR,A          ; bajt sterujacy podany do LCD – zadana akcja widoczna na LCD
+      ENDM
+	  
+// macro do wypisania znaku ASCII na LCD, znak ASCII przed wywolaniem macra ma byc w A
+LCDcharWR MACRO
+      LOCAL tutu            ; LOCAL oznacza ze etykieta tutu moze sie powtórzyc w programie
+      PUSH ACC              ; odlozenie biezacej zawartosci akumulatora na stos
+tutu: MOV  DPTR,#LCDstatus  ; DPTR zaladowany adresem statusu
+      MOVX A,@DPTR          ; pobranie bajtu z biezacym statusem LCD
+      JB   ACC.7,tutu       ; testowanie najstarszego bitu akumulatora
+                            ; – wskazuje gotowosc LCD
+      MOV  DPTR,#LCDdataWR  ; DPTR zaladowany adresem do podania bajtu sterujacego
+      POP  ACC              ; w akumulatorze ponownie kod ASCII znaku na LCD
+      MOVX @DPTR,A          ; kod ASCII podany do LCD – znak widoczny na LCD
+      ENDM
+	  
+// macro do inicjalizacji wyswietlacza – bez parametrów
+init_LCD MACRO
+         LCDcntrlWR #INITDISP ; wywolanie macra LCDcntrlWR – inicjalizacja LCD
+         LCDcntrlWR #CLEAR    ; wywolanie macra LCDcntrlWR – czyszczenie LCD
+         LCDcntrlWR #LCDON    ; wywolanie macra LCDcntrlWR – konfiguracja kursora
+         ENDM
+
+// macro do wypisywania polowki wskazania pozycji czasu lub daty
+disp_nibble MACRO
+	movx A,@DPTR
+	anl A,#0Fh	; select 4-bits
+	orl A,#30H	; change to ASCII
+	call putcharLCD
+	ENDM
+
+// funkcja wypisywania znaku na LCD
+putcharLCD:	LCDcharWR
+			ret
+		 
+// wypisywanie czasu
+disp_time:
+		LCDcntrlWR #HOME
+		mov DPTR,#RTChx	; get hours from RTC (higher nibble)
+		disp_nibble
+		mov DPTR,#RTCxh	; get hours from RTC (lower nibble)
+		disp_nibble
+		mov A,#':'
+		call putcharLCD
+		mov DPTR,#RTCmx	; get minutes from RTC (higher nibble)
+		disp_nibble
+		mov DPTR,#RTCxm	; get minutes from RTC (lower nibble)
+		disp_nibble
+		mov A,#':'
+		call putcharLCD;
+		mov DPTR,#RTCsx	; get seconds from RTC (higher nibble)
+		disp_nibble
+		mov DPTR,#RTCxs	; get seconds from RTC (lower nibble)
+		disp_nibble
+		RET
+
+// wypisywanie dnia tygodnia slownie
+week_word:
+		mov DPTR,#RTCdw	; get day of week from RTC
+		movx a, @DPTR
+		anl a, #0FH
+		mov b, #03
+		mul ab
+		mov r7,a
+		mov DPTR,#Week
+		movc a,@a+dptr
+		push dph
+		push dpl
+		acall putcharLCD
+		pop dpl
+		pop dph
+		inc dptr
+		mov a,r7
+		movc a,@a+dptr
+		push dph
+		push dpl
+		acall putcharLCD
+		pop dpl
+		pop dph
+		inc dptr
+		mov a,r7
+		movc a,@a+dptr
+		acall putcharLCD
+		ret
+		
+// wypisywanie nazwy miesiaca slownie
+month_word:
+		mov DPTR,#RTCnx	; get month from RTC (higher nibble)
+		movx a, @DPTR
+		anl a, #0FH
+		mov b, #10
+		mul ab
+		mov r7,a
+		mov DPTR,#RTCxn	; get month from RTC (lower nibble)
+		movx a, @DPTR
+		anl a, #0FH
+		add a,r7
+		clr c
+		subb a, #01
+		mov b, #03
+		mul ab
+		mov r7,a
+		mov DPTR,#Month
+		movc a,@a+dptr
+		push dph
+		push dpl
+		acall putcharLCD
+		pop dpl
+		pop dph
+		inc dptr
+		mov a,r7
+		movc a,@a+dptr
+		push dph
+		push dpl
+		acall putcharLCD
+		pop dpl
+		pop dph
+		inc dptr
+		mov a,r7
+		movc a,@a+dptr
+		acall putcharLCD
+		ret
+
+// wypisywanie daty
+disp_date:
+	LCDcntrlWR #HOM2
+	mov DPTR,#RTCdx	; get day from RTC (higher nibble)
+	disp_nibble
+	mov DPTR,#RTCxd	; get day from RTC (lower nibble)
+	disp_nibble
+	mov A,#'-'
+	call putcharLCD
+	acall month_word
+	mov A,#'-'
+	call putcharLCD;
+	clr a
+	mov DPTR,#TwentyH
+	movc a,@a+dptr
+	call putcharLCD;
+	clr a
+	mov DPTR,#TwentyL
+	movc a, @a+dptr
+	call putcharLCD;
+	mov DPTR,#RTCyx	; get year from RTC (higher nibble)
+	disp_nibble
+	mov DPTR,#RTCxy	; get year from RTC (lower nibble)
+	disp_nibble
+	mov A,#" "
+	call putcharLCD;
+	acall week_word
+	RET
+
+// --- ZMODYFIKOWANA INICJALIZACJA CZASU Z WALIDACJA ZAKRESÓW (ZADANIE 1) ---
+czas_start:
+		mov DPTR, #RTCpf ; 24h zegar
+		movx a, @DPTR
+		orl a, #04H
+		movx @DPTR, a
+		
+		; --- GODZINY ---
+		mov dptr, #Czas
+		clr a
+		movc a, @a+dptr	; dziesiatki godzin
+		subb a, #30h
+		mov r2, a       ; R2 = dziesiatki
+		inc dptr
+		clr a
+		movc a, @a+dptr	; jednosci godzin
+		subb a, #30h
+		mov r3, a       ; R3 = jednosci
+		
+		acall bcd_to_bin
+		mov VAL_HOUR, a
+		; Kontrola zakresu godzin: 00 - 23
+		clr c
+		subb a, #24
+		jc hour_ok      ; Jesli < 24, zakres poprawny
+		mov r2, #0      ; Blad: wprowadzamy wartosc minimalna 00
+		mov r3, #0
+hour_ok:
+		mov dptr, #RTChx
+		mov a, r2
+		movx @dptr, a
+		mov dptr, #RTCxh
+		mov a, r3
+		movx @dptr, a
+
+		; --- MINUTY ---
+		mov dptr, #Czas
+		mov a, #3       ; Przesuniecie indeksu w lancuchu tekstowym do dziesiatek minut
+		movc a, @a+dptr
+		subb a, #30h
+		mov r2, a
+		mov a, #4       ; Przesuniecie do jednosci minut
+		movc a, @a+dptr
+		subb a, #30h
+		mov r3, a
+		
+		acall bcd_to_bin
+		mov VAL_MIN, a
+		; Kontrola zakresu minut: 00 - 59
+		clr c
+		subb a, #60
+		jc min_ok       ; Jesli < 60, zakres poprawny
+		mov r2, #0      ; Blad: wprowadzamy wartosc minimalna 00
+		mov r3, #0
+min_ok:
+		mov dptr, #RTCmx
+		mov a, r2
+		movx @dptr, a
+		mov dptr, #RTCxm
+		mov a, r3
+		movx @dptr, a
+
+		; --- SEKUNDY ---
+		mov dptr, #Czas
+		mov a, #6       ; Przesuniecie do dziesiatek sekund
+		movc a, @a+dptr
+		subb a, #30h
+		mov r2, a
+		mov a, #7       ; Przesuniecie do jednosci sekund
+		movc a, @a+dptr
+		subb a, #30h
+		mov r3, a
+		
+		acall bcd_to_bin
+		mov VAL_SEC, a
+		; Kontrola zakresu sekund: 00 - 59
+		clr c
+		subb a, #60
+		jc sec_ok       ; Jesli < 60, zakres poprawny
+		mov r2, #0      ; Blad: wprowadzamy wartosc minimalna 00
+		mov r3, #0
+sec_ok:
+		mov dptr, #RTCsx
+		mov a, r2
+		movx @dptr, a
+		mov dptr, #RTCxs
+		mov a, r3
+		movx @dptr, a
+		ret
+
+// --- ZMODYFIKOWANA INICJALIZACJA DATY Z KORELACJA KALENDARZA (ZADANIE 1 i ZADANIE 2) ---
+data_start:	
+		; --- NAJPIERW POBIERAMY I WALIDUJEMY MIESIAC ---
+		; Numer miesiaca jest konieczny przed sprawdzeniem poprawnosci dnia (Zadanie 2)
+		mov dptr, #Dzien
+		mov a, #3       ; Przesuniecie do dziesiatek miesiaca
+		movc a, @a+dptr
+		subb a, #30h
+		mov r4, a       ; R4 = dziesiatki miesiaca
+		mov a, #4       ; Przesuniecie do jednosci miesiaca
+		movc a, @a+dptr
+		subb a, #30h
+		mov r5, a       ; R5 = jednosci miesiaca
+		
+		mov a, r4       ; r2 = r4 (poprzez akumulator A)
+		mov r2, a
+		mov a, r5       ; r3 = r5 (poprzez akumulator A)
+		mov r3, a
+		acall bcd_to_bin
+		mov VAL_MON, a
+		; Kontrola zakresu miesiaca: 01 - 12
+		jz mon_error    ; Jesli 00, to natychmiastowy blad
+		clr c
+		subb a, #13
+		jc mon_ok       ; Jesli < 13, zakres poprawny
+mon_error:
+		mov r4, #0      ; Blad zakresu: wymus wartosc minimalna -> 01 (Styczen)
+		mov r5, #1
+		mov VAL_MON, #1
+mon_ok:
+		mov dptr, #RTCxn
+		mov a, r4
+		movx @dptr, a
+		mov dptr, #RTCnx
+		mov a, r5
+		movx @dptr, a
+
+		; --- DYNAMICZNE USTALANIE LIMITU DNI (Zadanie 2) ---
+		mov MAX_DAYS, #31 ; Domyslna baza kalendarzowa to 31 dni
+
+		; Sprawdzenie grupy miesiecy 30-dniowych: kwiecien (4), czerwiec (6), wrzesien (9), listopad (11)
+		mov a, VAL_MON
+		cjne a, #4, chk_jun
+		mov MAX_DAYS, #30
+		sjmp limit_set
+chk_jun:
+		cjne a, #6, chk_sep
+		mov MAX_DAYS, #30
+		sjmp limit_set
+chk_sep:
+		cjne a, #9, chk_nov
+		mov MAX_DAYS, #30
+		sjmp limit_set
+chk_nov:
+		cjne a, #11, chk_feb
+		mov MAX_DAYS, #30
+		sjmp limit_set
+chk_feb:
+		; Sprawdzenie lutego (2) -> dla braku specyfikacji lat przestepnych ustawiamy sztywny limit 28 dni
+		cjne a, #2, limit_set
+		mov MAX_DAYS, #28
+
+limit_set:
+		; --- POBIERAMY I WALIDUJEMY DNI WZGLEDEM WYLICZONEGO LIMITU ---
+		mov dptr, #Dzien
+		clr a
+		movc a, @a+dptr	; dziesiatki dni
+		subb a, #30h
+		mov r2, a
+		inc dptr
+		clr a
+		movc a, @a+dptr	; jednosci dni
+		subb a, #30h
+		mov r3, a
+		
+		acall bcd_to_bin
+		mov VAL_DAY, a
+		; Kontrola zakresu dolnego i górnego limitu kalendarzowego (01 do MAX_DAYS)
+		jz day_error    ; Jesli dzien wynosi 00 -> wymus blad i korekte
+		
+		mov a, MAX_DAYS
+		inc a
+		mov r0, a       ; R0 = MAX_DAYS + 1
+		mov a, VAL_DAY
+		clr c
+		subb a, r0      ; Operacja sprawdzajaca warunek: VAL_DAY < (MAX_DAYS + 1)
+		jc day_ok
+day_error:
+		mov r2, #0      ; Blad zakresu badz korelacji: wprowadz wartosc minimalna -> 01
+		mov r3, #1
+day_ok:
+		mov dptr, #RTCdx
+		mov a, r2
+		movx @dptr, a
+		mov dptr, #RTCxd
+		mov a, r3
+		movx @dptr, a
+
+		; --- INICJALIZACJA ROKU ORAZ DNIA TYGODNIA (BEZ ZMIAN) ---
+		mov dptr, #Dzien
+		mov a, #6       ; dziesiatki roku
+		movc a, @a+dptr
+		subb a, #30h
+		push dph
+		push dpl
+		mov dptr, #RTCyx
+		movx @dptr, a
+		pop dpl
+		pop dph
+		
+		mov dptr, #Dzien
+		mov a, #7       ; jednosci roku
+		movc a, @a+dptr
+		subb a, #30h
+		push dph
+		push dpl
+		mov dptr, #RTCxy
+		movx @dptr, a
+		pop dpl
+		pop dph
+		
+		mov dptr, #Dzien
+		mov a, #9       ; dzien tygodnia
+		movc a, @a+dptr
+		subb a, #30h
+		push dph
+		push dpl
+		mov dptr, #RTCdw
+		movx @dptr, a
+		pop dpl
+		pop dph	
+		ret
+
+; --- UNIWERSALNY PODPROGRAM KONWERSJI ---
+; Zamienia cyfry BCD (R2 - dziesiatki, R3 - jednosci) na jedna zmienna binarna w rejestrze A
+bcd_to_bin:
+		mov a, r2
+		mov b, #10
+		mul ab          ; Akumulator = dziesiatki * 10
+		add a, r3       ; Dodanie jednosci do wyniku mnozenia
+		ret
+
+
+        ; program glówny
+start:	init_LCD
+
+		acall czas_start
+		acall data_start
+
+		
+czas_plynie:	acall disp_time
+				acall disp_date
+				sjmp czas_plynie
+		NOP
+		NOP
+		NOP
+		JMP $
+END START
